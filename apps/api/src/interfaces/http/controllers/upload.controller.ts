@@ -3,7 +3,6 @@ import { createHash } from 'node:crypto';
 
 import { store } from '../../../infrastructure/store';
 import {
-  MAX_UPLOAD_BYTES,
   createUploadSession,
   findResumableSession,
   objectStorage,
@@ -68,11 +67,16 @@ export class UploadController {
     if (!folders.some((folder) => folder.folderId === body.folderId)) {
       throw new DomainError('AUTH', 'VD-AUTH-404', '文件夹不存在', { status: 404 });
     }
-    if (body.sizeBytes > MAX_UPLOAD_BYTES) {
-      throw new DomainError('VAL', 'VD-VAL-003', '文件超过单文件上限 20 GB', { status: 400 });
+
+    const settings = await store.getSettings();
+    if (body.sizeBytes > settings.maxUploadBytes) {
+      const limitGb = (settings.maxUploadBytes / (1024 * 1024 * 1024)).toFixed(1);
+      throw new DomainError('VAL', 'VD-VAL-003', `文件超过单文件上限 ${limitGb} GB`, {
+        status: 400,
+      });
     }
 
-    if (body.sha256) {
+    if (body.sha256 && settings.instantUploadEnabled) {
       const projectFiles = await store.listFiles(body.projectId);
       const existing = projectFiles.find(
         (file) => file.sha256 === body.sha256 && file.sizeBytes === body.sizeBytes,

@@ -74,6 +74,20 @@ export interface StoreLoginResult {
   user: StoreUser;
 }
 
+export interface StoreSettings {
+  maxUploadBytes: number;
+  chunkSizeBytes: number;
+  trashRetentionDays: number;
+  instantUploadEnabled: boolean;
+}
+
+export interface SettingsPatch {
+  maxUploadBytes?: number;
+  chunkSizeBytes?: number;
+  trashRetentionDays?: number;
+  instantUploadEnabled?: boolean;
+}
+
 export interface CreateProjectInput {
   projectCode: string;
   projectName: string;
@@ -154,6 +168,9 @@ export interface StorePort {
   getUser(userId: string): Promise<StoreUser | null>;
   createUser(input: CreateUserInput): Promise<StoreUser>;
   updateUser(input: UpdateUserInput): Promise<StoreUser>;
+
+  getSettings(): Promise<StoreSettings>;
+  updateSettings(patch: SettingsPatch): Promise<StoreSettings>;
 
   memberProjectIds(userId: string): Promise<string[]>;
   visibleProjectIds(user: StoreUser): Promise<string[] | null>;

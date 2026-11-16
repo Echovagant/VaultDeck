@@ -16,7 +16,9 @@ import type {
   StoreMember,
   StorePort,
   StoreProject,
+  StoreSettings,
   StoreUser,
+  SettingsPatch,
   UpdateCategoryInput,
   UpdateFolderInput,
   UpdateUserInput,
@@ -37,6 +39,12 @@ class MemoryStore implements StorePort {
   private readonly categories = new Map<string, StoreCategory>();
   private readonly files = new Map<string, StoreFile>();
   private readonly audits: StoreAuditEntry[] = [];
+  private settings: StoreSettings = {
+    maxUploadBytes: 20 * 1024 * 1024 * 1024,
+    chunkSizeBytes: 8 * 1024 * 1024,
+    trashRetentionDays: TRASH_RETENTION_DAYS,
+    instantUploadEnabled: true,
+  };
 
   constructor() {
     this.seed();
@@ -110,6 +118,22 @@ class MemoryStore implements StorePort {
     if (input.status !== undefined) record.status = input.status;
     if (input.password !== undefined) record.password = input.password;
     return this.toStoreUser(record);
+  }
+
+  async getSettings(): Promise<StoreSettings> {
+    return { ...this.settings };
+  }
+
+  async updateSettings(patch: SettingsPatch): Promise<StoreSettings> {
+    if (patch.maxUploadBytes !== undefined) this.settings.maxUploadBytes = patch.maxUploadBytes;
+    if (patch.chunkSizeBytes !== undefined) this.settings.chunkSizeBytes = patch.chunkSizeBytes;
+    if (patch.trashRetentionDays !== undefined) {
+      this.settings.trashRetentionDays = patch.trashRetentionDays;
+    }
+    if (patch.instantUploadEnabled !== undefined) {
+      this.settings.instantUploadEnabled = patch.instantUploadEnabled;
+    }
+    return { ...this.settings };
   }
 
   async memberProjectIds(userId: string): Promise<string[]> {
@@ -317,7 +341,7 @@ class MemoryStore implements StorePort {
     file.status = 'trashed';
     file.trashedAt = now.toISOString();
     file.expireAt = new Date(
-      now.getTime() + TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000,
+      now.getTime() + this.settings.trashRetentionDays * 24 * 60 * 60 * 1000,
     ).toISOString();
     await this.recordAudit({
       actor: user,

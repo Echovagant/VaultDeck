@@ -38,6 +38,11 @@ const routes = [
     component: () => import('@/pages/categories/index.vue'),
   },
   {
+    path: '/settings',
+    name: 'settings',
+    component: () => import('@/pages/settings/index.vue'),
+  },
+  {
     path: '/trash',
     name: 'trash',
     component: () => import('@/pages/trash/index.vue'),

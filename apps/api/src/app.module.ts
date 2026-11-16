@@ -13,6 +13,7 @@ import { StatsController } from './interfaces/http/controllers/stats.controller'
 import { TrashController } from './interfaces/http/controllers/trash.controller';
 import { UploadController } from './interfaces/http/controllers/upload.controller';
 import { UsersController } from './interfaces/http/controllers/users.controller';
+import { SystemSettingsController } from './interfaces/http/controllers/settings.controller';
 
 @Module({
   controllers: [
@@ -29,6 +30,7 @@ import { UsersController } from './interfaces/http/controllers/users.controller'
     StatsController,
     UsersController,
     CategoriesController,
+    SystemSettingsController,
   ],
 })
 export class AppModule {}

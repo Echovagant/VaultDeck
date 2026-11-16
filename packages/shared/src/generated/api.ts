@@ -888,6 +888,7 @@ export interface components {
         SettingsPatch: {
             maxUploadBytes?: number;
             chunkSizeBytes?: number;
+            trashRetentionDays?: number;
             instantUploadEnabled?: boolean;
         };
     };

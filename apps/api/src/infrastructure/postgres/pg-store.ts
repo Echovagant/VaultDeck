@@ -18,7 +18,9 @@ import type {
   StoreMember,
   StorePort,
   StoreProject,
+  StoreSettings,
   StoreUser,
+  SettingsPatch,
   UpdateCategoryInput,
   UpdateFolderInput,
   UpdateUserInput,
@@ -243,6 +245,46 @@ export class PgStore implements StorePort {
     const row = result.rows[0];
     if (!row) throw new Error('USER_NOT_FOUND');
     return mapUser(row);
+  }
+
+  async getSettings(): Promise<StoreSettings> {
+    const result = await this.pool.query<{ setting_key: string; setting_value: unknown }>(
+      'SELECT setting_key, setting_value FROM setting',
+    );
+    const values = new Map(result.rows.map((row) => [row.setting_key, row.setting_value]));
+
+    return {
+      maxUploadBytes: Number(values.get('upload.maxBytes') ?? 20 * 1024 * 1024 * 1024),
+      chunkSizeBytes: Number(values.get('upload.chunkSizeBytes') ?? 8 * 1024 * 1024),
+      trashRetentionDays: Number(values.get('trash.retentionDays') ?? 10),
+      instantUploadEnabled: Boolean(values.get('upload.instantEnabled') ?? true),
+    };
+  }
+
+  async updateSettings(patch: SettingsPatch): Promise<StoreSettings> {
+    const entries: Array<[string, unknown]> = [];
+    if (patch.maxUploadBytes !== undefined) {
+      entries.push(['upload.maxBytes', patch.maxUploadBytes]);
+    }
+    if (patch.chunkSizeBytes !== undefined) {
+      entries.push(['upload.chunkSizeBytes', patch.chunkSizeBytes]);
+    }
+    if (patch.trashRetentionDays !== undefined) {
+      entries.push(['trash.retentionDays', patch.trashRetentionDays]);
+    }
+    if (patch.instantUploadEnabled !== undefined) {
+      entries.push(['upload.instantEnabled', patch.instantUploadEnabled]);
+    }
+
+    for (const [key, value] of entries) {
+      await this.pool.query(
+        `INSERT INTO setting (setting_key, setting_value) VALUES ($1, $2::jsonb)
+         ON CONFLICT (setting_key) DO UPDATE
+         SET setting_value = EXCLUDED.setting_value, updated_at = now()`,
+        [key, JSON.stringify(value)],
+      );
+    }
+    return this.getSettings();
   }
 
   async memberProjectIds(userId: string): Promise<string[]> {
@@ -601,10 +643,11 @@ export class PgStore implements StorePort {
   }
 
   async trashFile(user: StoreUser, file: StoreFile): Promise<StoreFile> {
+    const settings = await this.getSettings();
     await this.pool.query(
       `UPDATE file SET status = 'trashed', trashed_at = now(), expire_at = now() + ($2 || ' days')::interval
        WHERE file_id = $1`,
-      [file.fileId, String(TRASH_RETENTION_DAYS)],
+      [file.fileId, String(settings.trashRetentionDays)],
     );
     await this.recordAudit({
       actor: user,
