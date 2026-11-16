@@ -70,10 +70,12 @@ body {
   background: #fafafa;
   color: var(--vd-text-secondary);
   font-weight: 600;
+  padding: 10px 12px;
 }
 
 .ant-table-wrapper .ant-table-tbody > tr > td {
   border-bottom-color: rgba(0, 0, 0, 0.05);
+  padding: 9px 12px;
 }
 
 .ant-modal-content,

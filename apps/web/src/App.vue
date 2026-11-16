@@ -8,13 +8,34 @@
         </div>
 
         <a-menu mode="inline" :selected-keys="[activePath]" class="vd-menu" @click="onMenuClick">
-          <a-menu-item key="/projects">项目</a-menu-item>
-          <a-menu-item v-if="isLeaderOrDeputy" key="/stats">统计</a-menu-item>
-          <a-menu-item v-if="isLeader" key="/categories">分类</a-menu-item>
-          <a-menu-item key="/trash">回收站</a-menu-item>
-          <a-menu-item v-if="isLeaderOrDeputy" key="/audit">操作日志</a-menu-item>
-          <a-menu-item v-if="isLeader" key="/settings">设置</a-menu-item>
-          <a-menu-item key="/admin">后台</a-menu-item>
+          <a-menu-item key="/projects">
+            <template #icon><ProjectOutlined /></template>
+            项目
+          </a-menu-item>
+          <a-menu-item v-if="isLeaderOrDeputy" key="/stats">
+            <template #icon><BarChartOutlined /></template>
+            统计
+          </a-menu-item>
+          <a-menu-item v-if="isLeader" key="/categories">
+            <template #icon><TagsOutlined /></template>
+            分类
+          </a-menu-item>
+          <a-menu-item key="/trash">
+            <template #icon><DeleteOutlined /></template>
+            回收站
+          </a-menu-item>
+          <a-menu-item v-if="isLeaderOrDeputy" key="/audit">
+            <template #icon><HistoryOutlined /></template>
+            操作日志
+          </a-menu-item>
+          <a-menu-item v-if="isLeader" key="/settings">
+            <template #icon><SettingOutlined /></template>
+            设置
+          </a-menu-item>
+          <a-menu-item key="/admin">
+            <template #icon><TeamOutlined /></template>
+            后台
+          </a-menu-item>
         </a-menu>
 
         <div class="vd-sider-footer">
@@ -46,6 +67,15 @@
 </template>
 
 <script setup lang="ts">
+import {
+  BarChartOutlined,
+  DeleteOutlined,
+  HistoryOutlined,
+  ProjectOutlined,
+  SettingOutlined,
+  TagsOutlined,
+  TeamOutlined,
+} from '@ant-design/icons-vue';
 import { computed, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
@@ -78,6 +108,8 @@ const theme = {
     Table: {
       headerBg: '#fafafa',
       rowHoverBg: '#f5f9ff',
+      cellPaddingBlock: 9,
+      cellPaddingInline: 12,
     },
     Layout: {
       siderBg: '#ffffff',
