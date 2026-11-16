@@ -10,6 +10,8 @@
         class="app-menu"
       >
         <el-menu-item index="/projects">项目</el-menu-item>
+        <el-menu-item index="/trash">回收站</el-menu-item>
+        <el-menu-item v-if="session.user.role !== 'MEMBER'" index="/audit">操作日志</el-menu-item>
         <el-menu-item index="/admin">后台</el-menu-item>
       </el-menu>
       <div class="app-user">
@@ -33,7 +35,12 @@ const session = useSessionStore();
 const route = useRoute();
 const router = useRouter();
 
-const activePath = computed(() => (route.path.startsWith('/admin') ? '/admin' : '/projects'));
+const activePath = computed(() => {
+  if (route.path.startsWith('/admin')) return '/admin';
+  if (route.path.startsWith('/trash')) return '/trash';
+  if (route.path.startsWith('/audit')) return '/audit';
+  return '/projects';
+});
 const roleLabel = computed(() => {
   const labels: Record<string, string> = {
     LEADER: '领队',

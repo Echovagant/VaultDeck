@@ -19,7 +19,12 @@
           登录
         </el-button>
       </el-form>
-      <p class="dev-hint">开发期演示账号：leader / leader123</p>
+      <div class="dev-hint">
+        <div>开发期演示账号</div>
+        <div>领队：leader / leader123</div>
+        <div>执行领队：deputy / deputy123</div>
+        <div>队员：member / member123</div>
+      </div>
     </el-card>
   </div>
 </template>

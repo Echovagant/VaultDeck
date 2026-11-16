@@ -57,9 +57,9 @@ export class UploadController {
     @Body(new StrictBodyPipe<PrecheckBody>(precheckSchema)) body: PrecheckBody,
     @Headers('authorization') authorization?: string,
   ) {
-    requireUser(authorization);
+    const user = requireUser(authorization);
 
-    if (!memoryStore.projects.has(body.projectId)) {
+    if (!memoryStore.canAccessProject(user, body.projectId)) {
       throw new DomainError('AUTH', 'VD-AUTH-404', '项目不存在', { status: 404 });
     }
     if (!memoryStore.folders.has(body.folderId)) {
@@ -202,6 +202,15 @@ export class UploadController {
       uploaderId: user.userId,
       sha256: body.sha256,
       objectPath: merged.objectPath,
+    });
+
+    memoryStore.recordAudit({
+      actor: user,
+      action: 'file.upload',
+      objectType: 'file',
+      objectId: file.fileId,
+      result: 'success',
+      detail: file.fileName,
     });
 
     await objectStorage.cleanupSession(sessionId);

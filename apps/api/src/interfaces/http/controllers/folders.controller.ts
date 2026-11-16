@@ -29,9 +29,12 @@ export class FoldersController {
     @Query('projectId') projectId: string | undefined,
     @Headers('authorization') authorization?: string,
   ) {
-    requireUser(authorization);
+    const user = requireUser(authorization);
     if (!projectId) {
       throw new DomainError('VAL', 'VD-VAL-001', '缺少 projectId 参数', { status: 400 });
+    }
+    if (!memoryStore.canAccessProject(user, projectId)) {
+      throw new DomainError('AUTH', 'VD-AUTH-404', '项目不存在', { status: 404 });
     }
     const items = [...memoryStore.folders.values()]
       .filter((folder) => folder.projectId === projectId)
@@ -44,8 +47,8 @@ export class FoldersController {
     @Body(new StrictBodyPipe<CreateFolderBody>(createFolderSchema)) body: CreateFolderBody,
     @Headers('authorization') authorization?: string,
   ) {
-    requireUser(authorization);
-    if (!memoryStore.projects.has(body.projectId)) {
+    const user = requireUser(authorization);
+    if (!memoryStore.canAccessProject(user, body.projectId)) {
       throw new DomainError('AUTH', 'VD-AUTH-404', '项目不存在', { status: 404 });
     }
     const duplicated = [...memoryStore.folders.values()].some(
@@ -57,10 +60,19 @@ export class FoldersController {
     if (duplicated) {
       throw new DomainError('VAL', 'VD-VAL-002', '同级已存在同名文件夹', { status: 409 });
     }
-    return memoryStore.createFolder({
+    const folder = memoryStore.createFolder({
       projectId: body.projectId,
       folderName: body.folderName,
       parentId: body.parentId ?? null,
     });
+    memoryStore.recordAudit({
+      actor: user,
+      action: 'folder.create',
+      objectType: 'folder',
+      objectId: folder.folderId,
+      result: 'success',
+      detail: folder.folderName,
+    });
+    return folder;
   }
 }

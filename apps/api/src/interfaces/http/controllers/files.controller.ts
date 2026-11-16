@@ -1,4 +1,4 @@
-import { Controller, Get, Headers, Param, Query, Res } from '@nestjs/common';
+import { Controller, Delete, Get, Headers, Param, Query, Res } from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
 
 import { memoryStore } from '../../../infrastructure/memory/memory-store';
@@ -14,17 +14,33 @@ export class FilesController {
     @Query('folderId') folderId: string | undefined,
     @Headers('authorization') authorization?: string,
   ) {
-    requireUser(authorization);
+    const user = requireUser(authorization);
     if (!projectId) {
       throw new DomainError('VAL', 'VD-VAL-001', '缺少 projectId 参数', { status: 400 });
     }
+    if (!memoryStore.canAccessProject(user, projectId)) {
+      throw new DomainError('AUTH', 'VD-AUTH-404', '项目不存在', { status: 404 });
+    }
 
     const items = [...memoryStore.files.values()]
+      .filter((file) => file.status === 'active')
+      .filter((file) => memoryStore.canReadFile(user, file))
       .filter((file) => file.projectId === projectId)
       .filter((file) => (folderId ? file.folderId === folderId : true))
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
 
     return { items, total: items.length };
+  }
+
+  @Delete(':fileId')
+  remove(@Param('fileId') fileId: string, @Headers('authorization') authorization?: string) {
+    const user = requireUser(authorization);
+    const file = memoryStore.files.get(fileId);
+    if (!file || !memoryStore.canDeleteFile(user, file)) {
+      throw new DomainError('AUTH', 'VD-AUTH-404', '文件不存在', { status: 404 });
+    }
+    memoryStore.trashFile(user, file);
+    return { ok: true };
   }
 
   @Get(':fileId/content')
@@ -34,12 +50,24 @@ export class FilesController {
     @Headers('authorization') authorization: string | undefined,
     @Res({ passthrough: true }) reply: FastifyReply,
   ) {
-    requireUser(authorization);
+    const user = requireUser(authorization);
 
     const file = memoryStore.files.get(fileId);
-    if (!file || !file.objectPath) {
+    if (!file || !memoryStore.canReadFile(user, file)) {
       throw new DomainError('AUTH', 'VD-AUTH-404', '文件不存在', { status: 404 });
     }
+    if (!file.objectPath) {
+      throw new DomainError('AUTH', 'VD-AUTH-404', '文件内容不存在', { status: 404 });
+    }
+
+    memoryStore.recordAudit({
+      actor: user,
+      action: 'file.download',
+      objectType: 'file',
+      objectId: file.fileId,
+      result: 'success',
+      detail: file.fileName,
+    });
 
     const size = file.sizeBytes;
     let start = 0;

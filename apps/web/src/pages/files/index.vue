@@ -45,9 +45,10 @@
           {{ new Date(scope.row.createdAt).toLocaleString() }}
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="100">
+      <el-table-column label="操作" width="150">
         <template #default="scope">
           <el-button link type="primary" @click="download(scope.row)">下载</el-button>
+          <el-button link type="danger" @click="remove(scope.row)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -186,6 +187,16 @@ async function download(file: FileItem): Promise<void> {
     URL.revokeObjectURL(url);
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '下载失败');
+  }
+}
+
+async function remove(file: FileItem): Promise<void> {
+  try {
+    await api(`/files/${file.fileId}`, { method: 'DELETE' });
+    ElMessage.success('已移入回收站');
+    await loadFiles();
+  } catch (error) {
+    ElMessage.error(error instanceof ApiError ? error.message : '删除失败');
   }
 }
 

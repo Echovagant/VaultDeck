@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, Injectable, Post } from '@nestjs/common';
+import { Body, Controller, Get, Headers, HttpCode, Injectable, Post } from '@nestjs/common';
 
 import { DomainError } from '../errors/problem-details';
 import { StrictBodyPipe } from '../validation/strict-body.pipe';
@@ -38,11 +38,20 @@ export function requireUser(header: string | undefined): MemoryUser {
 @Controller('auth')
 export class AuthController {
   @Post('login')
+  @HttpCode(200)
   login(@Body(new StrictBodyPipe<LoginBody>(loginSchema)) body: LoginBody) {
     const result = memoryStore.login(body.username, body.password);
     if (!result) {
       throw new DomainError('AUTH', 'VD-AUTH-401', '用户名或口令不正确', { status: 401 });
     }
+    memoryStore.recordAudit({
+      actor: result.user,
+      action: 'auth.login',
+      objectType: 'user',
+      objectId: result.user.userId,
+      result: 'success',
+      detail: result.user.username,
+    });
     return {
       token: result.token,
       userId: result.user.userId,
@@ -53,6 +62,7 @@ export class AuthController {
   }
 
   @Post('logout')
+  @HttpCode(204)
   logout(@Headers('authorization') authorization?: string) {
     const token = readBearerToken(authorization);
     if (token) memoryStore.logout(token);
