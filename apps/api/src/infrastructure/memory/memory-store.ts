@@ -3,11 +3,13 @@ import { randomUUID } from 'node:crypto';
 import type {
   AddFileInput,
   AddMemberInput,
+  CreateCategoryInput,
   CreateFolderInput,
   CreateProjectInput,
   CreateUserInput,
   RecordAuditInput,
   StoreAuditEntry,
+  StoreCategory,
   StoreFile,
   StoreFolder,
   StoreLoginResult,
@@ -15,6 +17,8 @@ import type {
   StorePort,
   StoreProject,
   StoreUser,
+  UpdateCategoryInput,
+  UpdateFolderInput,
   UpdateUserInput,
 } from '../../application/ports/store.port';
 
@@ -30,6 +34,7 @@ class MemoryStore implements StorePort {
   private readonly projects = new Map<string, StoreProject>();
   private readonly members = new Map<string, StoreMember>();
   private readonly folders = new Map<string, StoreFolder>();
+  private readonly categories = new Map<string, StoreCategory>();
   private readonly files = new Map<string, StoreFile>();
   private readonly audits: StoreAuditEntry[] = [];
 
@@ -223,6 +228,62 @@ class MemoryStore implements StorePort {
     return folder;
   }
 
+  async getFolder(folderId: string): Promise<StoreFolder | null> {
+    return this.folders.get(folderId) ?? null;
+  }
+
+  async updateFolder(input: UpdateFolderInput): Promise<StoreFolder> {
+    const folder = this.folders.get(input.folderId);
+    if (!folder) throw new Error('FOLDER_NOT_FOUND');
+
+    if (input.folderName !== undefined) folder.folderName = input.folderName;
+    if (input.parentId !== undefined) folder.parentId = input.parentId;
+    return folder;
+  }
+
+  async deleteFolder(folderId: string): Promise<void> {
+    this.folders.delete(folderId);
+  }
+
+  async listCategories(): Promise<StoreCategory[]> {
+    return [...this.categories.values()].sort((left, right) =>
+      left.categoryCode.localeCompare(right.categoryCode),
+    );
+  }
+
+  async createCategory(input: CreateCategoryInput): Promise<StoreCategory> {
+    const duplicated = [...this.categories.values()].some(
+      (category) => category.categoryCode.toLowerCase() === input.categoryCode.toLowerCase(),
+    );
+    if (duplicated) throw new Error('CATEGORY_CODE_TAKEN');
+
+    const category: StoreCategory = {
+      categoryId: randomUUID(),
+      categoryCode: input.categoryCode,
+      categoryName: input.categoryName,
+      extensions: input.extensions,
+      isSystem: false,
+    };
+    this.categories.set(category.categoryId, category);
+    return category;
+  }
+
+  async updateCategory(input: UpdateCategoryInput): Promise<StoreCategory> {
+    const category = this.categories.get(input.categoryId);
+    if (!category) throw new Error('CATEGORY_NOT_FOUND');
+    if (category.isSystem) throw new Error('CATEGORY_SYSTEM_READONLY');
+    if (input.categoryName !== undefined) category.categoryName = input.categoryName;
+    if (input.extensions !== undefined) category.extensions = input.extensions;
+    return category;
+  }
+
+  async deleteCategory(categoryId: string): Promise<void> {
+    const category = this.categories.get(categoryId);
+    if (!category) throw new Error('CATEGORY_NOT_FOUND');
+    if (category.isSystem) throw new Error('CATEGORY_SYSTEM_READONLY');
+    this.categories.delete(categoryId);
+  }
+
   async listFiles(projectId: string): Promise<StoreFile[]> {
     return [...this.files.values()].filter((file) => file.projectId === projectId);
   }
@@ -329,7 +390,34 @@ class MemoryStore implements StorePort {
     }
   }
 
+  private seedCategories(): void {
+    const defaults: Array<[string, string, string[]]> = [
+      ['IMAGE', '图片', ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp']],
+      ['AUDIO', '音频', ['.mp3', '.wav', '.flac', '.aac', '.m4a']],
+      ['VIDEO', '视频', ['.mp4', '.mov', '.avi', '.mkv', '.wmv']],
+      ['SURVEY', '测绘', ['.dwg', '.dxf', '.shp', '.kml', '.geojson', '.las']],
+      [
+        'DOCUMENT',
+        '文档',
+        ['.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.pdf', '.txt', '.csv'],
+      ],
+      ['OTHER', '其他', ['.zip', '.rar', '.7z']],
+    ];
+
+    for (const [code, name, extensions] of defaults) {
+      const category: StoreCategory = {
+        categoryId: randomUUID(),
+        categoryCode: code,
+        categoryName: name,
+        extensions,
+        isSystem: true,
+      };
+      this.categories.set(category.categoryId, category);
+    }
+  }
+
   private seed(): void {
+    this.seedCategories();
     const leader = this.seedUser('leader', 'leader123', '领队', 'LEADER');
     const deputy = this.seedUser('deputy', 'deputy123', '执行领队', 'DEPUTY_LEADER');
     const member = this.seedUser('member', 'member123', '队员', 'MEMBER');

@@ -211,6 +211,33 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Category' }
         '400': { $ref: '#/components/responses/BadRequest' }
+  /categories/{categoryId}:
+    patch:
+      tags: [categories]
+      operationId: updateCategory
+      parameters:
+        - { name: categoryId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateCategoryRequest' }
+      responses:
+        '200':
+          description: 已更新
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Category' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [categories]
+      operationId: deleteCategory
+      parameters:
+        - { name: categoryId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '204': { description: 已删除 }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /folders:
     get:
       tags: [folders]
@@ -914,6 +941,15 @@ components:
       additionalProperties: false
       properties:
         categoryCode: { type: string, minLength: 1, maxLength: 32 }
+        categoryName: { type: string, minLength: 1, maxLength: 64 }
+        extensions:
+          type: array
+          minItems: 1
+          items: { type: string, pattern: '^\.[a-z0-9]+$' }
+    UpdateCategoryRequest:
+      type: object
+      additionalProperties: false
+      properties:
         categoryName: { type: string, minLength: 1, maxLength: 64 }
         extensions:
           type: array

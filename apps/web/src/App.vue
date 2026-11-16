@@ -11,6 +11,7 @@
       >
         <el-menu-item index="/projects">项目</el-menu-item>
         <el-menu-item v-if="session.user.role !== 'MEMBER'" index="/stats">统计</el-menu-item>
+        <el-menu-item v-if="session.user.role === 'LEADER'" index="/categories">分类</el-menu-item>
         <el-menu-item index="/trash">回收站</el-menu-item>
         <el-menu-item v-if="session.user.role !== 'MEMBER'" index="/audit">操作日志</el-menu-item>
         <el-menu-item index="/admin">后台</el-menu-item>
@@ -46,6 +47,7 @@ const router = useRouter();
 const activePath = computed(() => {
   if (route.path.startsWith('/admin')) return '/admin';
   if (route.path.startsWith('/stats')) return '/stats';
+  if (route.path.startsWith('/categories')) return '/categories';
   if (route.path.startsWith('/trash')) return '/trash';
   if (route.path.startsWith('/audit')) return '/audit';
   if (route.path.startsWith('/search')) return '/search';

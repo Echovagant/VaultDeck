@@ -5,11 +5,13 @@ import { Pool } from 'pg';
 import type {
   AddFileInput,
   AddMemberInput,
+  CreateCategoryInput,
   CreateFolderInput,
   CreateProjectInput,
   CreateUserInput,
   RecordAuditInput,
   StoreAuditEntry,
+  StoreCategory,
   StoreFile,
   StoreFolder,
   StoreLoginResult,
@@ -17,6 +19,8 @@ import type {
   StorePort,
   StoreProject,
   StoreUser,
+  UpdateCategoryInput,
+  UpdateFolderInput,
   UpdateUserInput,
 } from '../../application/ports/store.port';
 
@@ -105,6 +109,42 @@ const FILE_SELECT = `
   FROM file f
   LEFT JOIN stored_object o ON o.object_id = f.object_id
 `;
+
+interface FolderRow {
+  folder_id: string;
+  project_id: string;
+  folder_name: string;
+  parent_id: string | null;
+  created_at: Date;
+}
+
+function mapFolderRow(row: FolderRow): StoreFolder {
+  return {
+    folderId: row.folder_id,
+    projectId: row.project_id,
+    folderName: row.folder_name,
+    parentId: row.parent_id,
+    createdAt: iso(row.created_at),
+  };
+}
+
+interface CategoryRow {
+  category_id: string;
+  category_code: string;
+  category_name: string;
+  extensions: string[] | null;
+  is_system: boolean;
+}
+
+function mapCategory(row: CategoryRow): StoreCategory {
+  return {
+    categoryId: row.category_id,
+    categoryCode: row.category_code,
+    categoryName: row.category_name,
+    extensions: row.extensions ?? [],
+    isSystem: row.is_system,
+  };
+}
 
 export class PgStore implements StorePort {
   constructor(private readonly pool: Pool) {}
@@ -379,6 +419,123 @@ export class PgStore implements StorePort {
       parentId: row.parent_id,
       createdAt: iso(row.created_at),
     };
+  }
+
+  async getFolder(folderId: string): Promise<StoreFolder | null> {
+    const result = await this.pool.query<FolderRow>('SELECT * FROM folder WHERE folder_id = $1', [
+      folderId,
+    ]);
+    const row = result.rows[0];
+    return row ? mapFolderRow(row) : null;
+  }
+
+  async updateFolder(input: UpdateFolderInput): Promise<StoreFolder> {
+    const sets: string[] = [];
+    const params: unknown[] = [];
+
+    if (input.folderName !== undefined) {
+      params.push(input.folderName);
+      sets.push(`folder_name = $${params.length}`);
+    }
+    if (input.parentId !== undefined) {
+      params.push(input.parentId);
+      sets.push(`parent_id = $${params.length}`);
+    }
+
+    if (sets.length === 0) {
+      const found = await this.pool.query<FolderRow>('SELECT * FROM folder WHERE folder_id = $1', [
+        input.folderId,
+      ]);
+      const row = found.rows[0];
+      if (!row) throw new Error('FOLDER_NOT_FOUND');
+      return mapFolderRow(row);
+    }
+
+    params.push(input.folderId);
+    const result = await this.pool.query<FolderRow>(
+      `UPDATE folder SET ${sets.join(', ')} WHERE folder_id = $${params.length} RETURNING *`,
+      params,
+    );
+    const row = result.rows[0];
+    if (!row) throw new Error('FOLDER_NOT_FOUND');
+    return mapFolderRow(row);
+  }
+
+  async deleteFolder(folderId: string): Promise<void> {
+    await this.pool.query('DELETE FROM folder WHERE folder_id = $1', [folderId]);
+  }
+
+  async listCategories(): Promise<StoreCategory[]> {
+    const result = await this.pool.query<CategoryRow>(
+      'SELECT * FROM category ORDER BY category_code',
+    );
+    return result.rows.map(mapCategory);
+  }
+
+  async createCategory(input: CreateCategoryInput): Promise<StoreCategory> {
+    const result = await this.pool.query<CategoryRow>(
+      `INSERT INTO category (category_code, category_name, extensions, is_system)
+       VALUES ($1, $2, $3, false) RETURNING *`,
+      [input.categoryCode, input.categoryName, input.extensions],
+    );
+    const row = result.rows[0];
+    if (!row) throw new Error('CATEGORY_CREATE_FAILED');
+    return mapCategory(row);
+  }
+
+  async updateCategory(input: UpdateCategoryInput): Promise<StoreCategory> {
+    const current = await this.pool.query<{ is_system: boolean }>(
+      'SELECT is_system FROM category WHERE category_id = $1',
+      [input.categoryId],
+    );
+    const currentRow = current.rows[0];
+    if (!currentRow) throw new Error('CATEGORY_NOT_FOUND');
+    if (currentRow.is_system) throw new Error('CATEGORY_SYSTEM_READONLY');
+
+    const sets: string[] = [];
+    const params: unknown[] = [];
+    if (input.categoryName !== undefined) {
+      params.push(input.categoryName);
+      sets.push(`category_name = $${params.length}`);
+    }
+    if (input.extensions !== undefined) {
+      params.push(input.extensions);
+      sets.push(`extensions = $${params.length}`);
+    }
+
+    if (sets.length === 0) {
+      const found = await this.pool.query<CategoryRow>(
+        'SELECT * FROM category WHERE category_id = $1',
+        [input.categoryId],
+      );
+      const row = found.rows[0];
+      if (!row) throw new Error('CATEGORY_NOT_FOUND');
+      return mapCategory(row);
+    }
+
+    params.push(input.categoryId);
+    const result = await this.pool.query<CategoryRow>(
+      `UPDATE category SET ${sets.join(', ')} WHERE category_id = $${params.length} RETURNING *`,
+      params,
+    );
+    const row = result.rows[0];
+    if (!row) throw new Error('CATEGORY_NOT_FOUND');
+    return mapCategory(row);
+  }
+
+  async deleteCategory(categoryId: string): Promise<void> {
+    const result = await this.pool.query(
+      'DELETE FROM category WHERE category_id = $1 AND is_system = false RETURNING category_id',
+      [categoryId],
+    );
+    if ((result.rowCount ?? 0) > 0) return;
+
+    const exists = await this.pool.query<{ is_system: boolean }>(
+      'SELECT is_system FROM category WHERE category_id = $1',
+      [categoryId],
+    );
+    if ((exists.rowCount ?? 0) === 0) throw new Error('CATEGORY_NOT_FOUND');
+    throw new Error('CATEGORY_SYSTEM_READONLY');
   }
 
   async listFiles(projectId: string): Promise<StoreFile[]> {

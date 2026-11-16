@@ -33,6 +33,14 @@ export interface StoreFolder {
   createdAt: string;
 }
 
+export interface StoreCategory {
+  categoryId: string;
+  categoryCode: string;
+  categoryName: string;
+  extensions: string[];
+  isSystem: boolean;
+}
+
 export interface StoreFile {
   fileId: string;
   projectId: string;
@@ -82,6 +90,24 @@ export interface CreateFolderInput {
   folderName: string;
   parentId: string | null;
   createdBy: string;
+}
+
+export interface UpdateFolderInput {
+  folderId: string;
+  folderName?: string;
+  parentId?: string | null;
+}
+
+export interface CreateCategoryInput {
+  categoryCode: string;
+  categoryName: string;
+  extensions: string[];
+}
+
+export interface UpdateCategoryInput {
+  categoryId: string;
+  categoryName?: string;
+  extensions?: string[];
 }
 
 export interface AddFileInput {
@@ -147,7 +173,15 @@ export interface StorePort {
   addMember(input: AddMemberInput): Promise<StoreMember>;
 
   listFolders(projectId: string): Promise<StoreFolder[]>;
+  getFolder(folderId: string): Promise<StoreFolder | null>;
   createFolder(input: CreateFolderInput): Promise<StoreFolder>;
+  updateFolder(input: UpdateFolderInput): Promise<StoreFolder>;
+  deleteFolder(folderId: string): Promise<void>;
+
+  listCategories(): Promise<StoreCategory[]>;
+  createCategory(input: CreateCategoryInput): Promise<StoreCategory>;
+  updateCategory(input: UpdateCategoryInput): Promise<StoreCategory>;
+  deleteCategory(categoryId: string): Promise<void>;
 
   listFiles(projectId: string): Promise<StoreFile[]>;
   getFile(fileId: string): Promise<StoreFile | null>;

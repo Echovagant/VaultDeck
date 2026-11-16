@@ -21,6 +21,7 @@
       <el-button type="success" :disabled="selectedFiles.length === 0" @click="bundleDownload">
         打包下载
       </el-button>
+      <el-button @click="folderManagerVisible = true">文件夹管理</el-button>
       <el-button :disabled="folders.length === 0" @click="pickDirectory">导入目录</el-button>
       <el-button @click="loadAll">刷新</el-button>
       <input ref="fileInput" type="file" multiple hidden @change="onFilesPicked" />
@@ -59,6 +60,13 @@
         </template>
       </el-table-column>
     </el-table>
+
+    <FolderManagerDialog
+      v-model="folderManagerVisible"
+      :project-id="projectId"
+      @changed="loadAll"
+    />
+
     <FilePreviewDialog v-model="previewVisible" :file="previewFile" />
 
     <el-dialog v-model="importVisible" title="导入结果" width="680px">
@@ -110,6 +118,7 @@ import {
   type FolderItem,
   type ProjectSummary,
 } from '@/api/client';
+import FolderManagerDialog from '@/features/folders/FolderManagerDialog.vue';
 import FilePreviewDialog from '@/features/preview/FilePreviewDialog.vue';
 import { importDirectory, type ImportResult } from '@/features/upload/directory-importer';
 import { uploadFile } from '@/features/upload/uploader';
@@ -124,6 +133,7 @@ const files = ref<FileItem[]>([]);
 const folderId = ref<string>('');
 const loading = ref(false);
 
+const folderManagerVisible = ref(false);
 const previewVisible = ref(false);
 const previewFile = ref<FileItem | null>(null);
 const selectedFiles = ref<FileItem[]>([]);
