@@ -1,5 +1,6 @@
 # ---- 私有与敏感（禁止提交） ----
 _private/
+HANDOFF*.md
 private/
 .local/
 *.local.md
