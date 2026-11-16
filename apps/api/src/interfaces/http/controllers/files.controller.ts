@@ -1,8 +1,11 @@
+import { createReadStream } from 'node:fs';
+
 import { Controller, Delete, Get, Headers, Param, Query, Res } from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
 
 import { store } from '../../../infrastructure/store';
 import { objectStorage } from '../../../infrastructure/memory/upload-sessions';
+import { createLibreOfficePreview } from '../../../infrastructure/preview/libreoffice-preview';
 import { DomainError } from '../errors/problem-details';
 import { toPublicFile } from '../presenters/file.presenter';
 import { requireUser } from './auth.controller';
@@ -109,4 +112,41 @@ export class FilesController {
 
     return objectStorage.openRange(file.objectPath, start, end);
   }
+
+  @Get(':fileId/preview')
+  async preview(
+    @Param('fileId') fileId: string,
+    @Headers('authorization') authorization: string | undefined,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ) {
+    const user = await requireUser(authorization);
+    const file = await store.getFile(fileId);
+    if (!file || !(await store.canReadFile(user, file))) {
+      throw new DomainError('AUTH', 'VD-AUTH-404', '文件不存在', { status: 404 });
+    }
+    if (!file.objectPath) {
+      throw new DomainError('AUTH', 'VD-AUTH-404', '文件内容不存在', { status: 404 });
+    }
+    if (!previewAdapter.supports(file.fileName)) {
+      throw new DomainError('SYS', 'VD-SYS-501', '该格式不支持服务端预览', { status: 415 });
+    }
+
+    let pdfPath: string;
+    try {
+      pdfPath = await previewAdapter.convertToPdf({
+        fileId: file.fileId,
+        objectPath: file.objectPath,
+      });
+    } catch {
+      throw new DomainError('SYS', 'VD-SYS-502', 'Office 预览暂不可用，请下载后查看', {
+        status: 503,
+      });
+    }
+
+    reply.header('content-type', 'application/pdf');
+    reply.header('content-disposition', 'inline');
+    return createReadStream(pdfPath);
+  }
 }
+
+const previewAdapter = createLibreOfficePreview();

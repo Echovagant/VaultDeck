@@ -41,6 +41,7 @@ const emit = defineEmits<{
 }>();
 
 const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'];
+const OFFICE_EXTENSIONS = ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp', 'rtf'];
 const TEXT_EXTENSIONS = ['txt', 'csv', 'md', 'json', 'log', 'xml', 'yaml', 'yml'];
 
 const loading = ref(false);
@@ -64,14 +65,27 @@ async function load(file: PreviewFile): Promise<void> {
   cleanup();
   loading.value = true;
   try {
+    const ext = extensionOf(file.fileName);
+    const needsConversion = OFFICE_EXTENSIONS.includes(ext);
+    const endpoint = needsConversion
+      ? `/api/v1/files/${file.fileId}/preview`
+      : `/api/v1/files/${file.fileId}/content`;
+
     const token = getToken();
-    const response = await fetch(`/api/v1/files/${file.fileId}/content`, {
+    const response = await fetch(endpoint, {
       headers: token ? { authorization: `Bearer ${token}` } : undefined,
     });
-    if (!response.ok) throw new Error('加载文件失败');
 
-    const ext = extensionOf(file.fileName);
-    if (ext === 'pdf') {
+    if (!response.ok) {
+      if (needsConversion) {
+        kind.value = 'unsupported';
+        await response.body?.cancel();
+        return;
+      }
+      throw new Error('加载文件失败');
+    }
+
+    if (needsConversion || ext === 'pdf') {
       objectUrl.value = URL.createObjectURL(await response.blob());
       kind.value = 'pdf';
     } else if (IMAGE_EXTENSIONS.includes(ext)) {

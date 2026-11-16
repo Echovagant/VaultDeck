@@ -68,7 +68,11 @@ paths:
       operationId: listUsers
       parameters:
         - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
-        - { name: pageSize, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+        - {
+            name: pageSize,
+            in: query,
+            schema: { type: integer, minimum: 1, maximum: 100, default: 20 },
+          }
       responses:
         '200':
           description: 用户列表
@@ -273,7 +277,11 @@ paths:
         - { name: projectId, in: query, required: true, schema: { type: string, format: uuid } }
         - { name: folderId, in: query, schema: { type: string, format: uuid } }
         - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
-        - { name: pageSize, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+        - {
+            name: pageSize,
+            in: query,
+            schema: { type: integer, minimum: 1, maximum: 200, default: 50 },
+          }
       responses:
         '200':
           description: 文件列表
@@ -344,6 +352,29 @@ paths:
               schema: { type: string, format: binary }
         '404': { $ref: '#/components/responses/NotFound' }
         '416': { $ref: '#/components/responses/RangeNotSatisfiable' }
+  /files/{fileId}/preview:
+    get:
+      tags: [files]
+      operationId: previewFile
+      parameters:
+        - $ref: '#/components/parameters/FileId'
+      responses:
+        '200':
+          description: 转换后的 PDF
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '415':
+          description: 不支持预览的格式
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '503':
+          description: 预览服务不可用或转换失败
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
   /upload-sessions/precheck:
     post:
       tags: [upload-sessions]
@@ -514,7 +545,11 @@ paths:
         - { name: categoryId, in: query, schema: { type: string, format: uuid } }
         - { name: uploaderId, in: query, schema: { type: string, format: uuid } }
         - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
-        - { name: pageSize, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+        - {
+            name: pageSize,
+            in: query,
+            schema: { type: integer, minimum: 1, maximum: 200, default: 50 },
+          }
       responses:
         '200':
           description: 搜索结果
@@ -577,7 +612,11 @@ paths:
         - { name: actorId, in: query, schema: { type: string, format: uuid } }
         - { name: action, in: query, schema: { type: string } }
         - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
-        - { name: pageSize, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+        - {
+            name: pageSize,
+            in: query,
+            schema: { type: integer, minimum: 1, maximum: 200, default: 50 },
+          }
       responses:
         '200':
           description: 审计条目
