@@ -1,6 +1,6 @@
-/**
- * 端口接口集中导出。
- * M0-08 在此定义 StoragePort / PreviewPort / AuthPort / SearchPort / NotifyPort。
- * 端口签名不得出现第三方 SDK 类型。
- */
-export {};
+export type * from './storage.port';
+export type * from './preview.port';
+export type * from './auth.port';
+export type * from './search.port';
+export type * from './notify.port';
+export type * from './project-store.port';

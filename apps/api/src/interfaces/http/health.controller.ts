@@ -5,7 +5,7 @@ interface HealthResponse {
   uptimeSeconds: number;
 }
 
-@Controller('health')
+@Controller('system/health')
 export class HealthController {
   @Get()
   check(): HealthResponse {
