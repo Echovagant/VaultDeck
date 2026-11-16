@@ -18,7 +18,9 @@ const headers = { authorization: `Bearer ${token}` };
 
 const projectResponse = await fetch(`${BASE}/projects`, { headers });
 const projects = await projectResponse.json();
-const projectId = projects.items[0].projectId;
+const demoProject =
+  projects.items.find((item) => item.projectCode === 'DEMO-001') ?? projects.items[0];
+const projectId = demoProject.projectId;
 
 const folderResponse = await fetch(`${BASE}/folders?projectId=${projectId}`, { headers });
 const folders = await folderResponse.json();

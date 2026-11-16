@@ -1,6 +1,6 @@
 import { Controller, Delete, Get, Headers, Param, Post } from '@nestjs/common';
 
-import { memoryStore, TRASH_RETENTION_DAYS } from '../../../infrastructure/memory/memory-store';
+import { TRASH_RETENTION_DAYS, store } from '../../../infrastructure/store';
 import { DomainError } from '../errors/problem-details';
 import { requireUser } from './auth.controller';
 
@@ -29,29 +29,29 @@ function toTrashDto(file: {
 @Controller('trash')
 export class TrashController {
   @Get()
-  list(@Headers('authorization') authorization?: string) {
-    const user = requireUser(authorization);
-    return { items: memoryStore.listTrash(user).map(toTrashDto) };
+  async list(@Headers('authorization') authorization?: string) {
+    const user = await requireUser(authorization);
+    return { items: (await store.listTrash(user)).map(toTrashDto) };
   }
 
   @Post(':fileId/restore')
-  restore(@Param('fileId') fileId: string, @Headers('authorization') authorization?: string) {
-    const user = requireUser(authorization);
-    const file = memoryStore.files.get(fileId);
-    if (!file || file.status !== 'trashed' || !memoryStore.canManageTrashedFile(user, file)) {
+  async restore(@Param('fileId') fileId: string, @Headers('authorization') authorization?: string) {
+    const user = await requireUser(authorization);
+    const file = await store.getFile(fileId);
+    if (!file || file.status !== 'trashed' || !(await store.canManageTrashedFile(user, file))) {
       throw new DomainError('AUTH', 'VD-AUTH-404', '回收站条目不存在', { status: 404 });
     }
-    return memoryStore.restoreFile(user, file);
+    return store.restoreFile(user, file);
   }
 
   @Delete(':fileId')
-  purge(@Param('fileId') fileId: string, @Headers('authorization') authorization?: string) {
-    const user = requireUser(authorization);
-    const file = memoryStore.files.get(fileId);
-    if (!file || file.status !== 'trashed' || !memoryStore.canManageTrashedFile(user, file)) {
+  async purge(@Param('fileId') fileId: string, @Headers('authorization') authorization?: string) {
+    const user = await requireUser(authorization);
+    const file = await store.getFile(fileId);
+    if (!file || file.status !== 'trashed' || !(await store.canManageTrashedFile(user, file))) {
       throw new DomainError('AUTH', 'VD-AUTH-404', '回收站条目不存在', { status: 404 });
     }
-    memoryStore.purgeFile(user, file);
+    await store.purgeFile(user, file);
     return { ok: true };
   }
 }

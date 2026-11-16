@@ -1,8 +1,9 @@
 import { Body, Controller, Get, Headers, HttpCode, Injectable, Post } from '@nestjs/common';
 
+import type { StoreUser } from '../../../application/ports/store.port';
+import { store } from '../../../infrastructure/store';
 import { DomainError } from '../errors/problem-details';
 import { StrictBodyPipe } from '../validation/strict-body.pipe';
-import { memoryStore, type MemoryUser } from '../../../infrastructure/memory/memory-store';
 
 interface LoginBody {
   username: string;
@@ -25,9 +26,9 @@ export function readBearerToken(header: string | undefined): string | null {
   return match?.[1] ?? null;
 }
 
-export function requireUser(header: string | undefined): MemoryUser {
+export async function requireUser(header: string | undefined): Promise<StoreUser> {
   const token = readBearerToken(header);
-  const user = token ? memoryStore.userByToken(token) : null;
+  const user = token ? await store.userByToken(token) : null;
   if (!user) {
     throw new DomainError('AUTH', 'VD-AUTH-401', '未登录或会话已失效', { status: 401 });
   }
@@ -39,12 +40,12 @@ export function requireUser(header: string | undefined): MemoryUser {
 export class AuthController {
   @Post('login')
   @HttpCode(200)
-  login(@Body(new StrictBodyPipe<LoginBody>(loginSchema)) body: LoginBody) {
-    const result = memoryStore.login(body.username, body.password);
+  async login(@Body(new StrictBodyPipe<LoginBody>(loginSchema)) body: LoginBody) {
+    const result = await store.login(body.username, body.password);
     if (!result) {
       throw new DomainError('AUTH', 'VD-AUTH-401', '用户名或口令不正确', { status: 401 });
     }
-    memoryStore.recordAudit({
+    await store.recordAudit({
       actor: result.user,
       action: 'auth.login',
       objectType: 'user',
@@ -63,15 +64,15 @@ export class AuthController {
 
   @Post('logout')
   @HttpCode(204)
-  logout(@Headers('authorization') authorization?: string) {
+  async logout(@Headers('authorization') authorization?: string) {
     const token = readBearerToken(authorization);
-    if (token) memoryStore.logout(token);
+    if (token) await store.logout(token);
     return { ok: true };
   }
 
   @Get('me')
-  me(@Headers('authorization') authorization?: string) {
-    const user = requireUser(authorization);
+  async me(@Headers('authorization') authorization?: string) {
+    const user = await requireUser(authorization);
     return {
       userId: user.userId,
       username: user.username,

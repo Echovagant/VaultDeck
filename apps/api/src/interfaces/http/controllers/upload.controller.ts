@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Headers, HttpCode, Param, Post, Put } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 
-import { memoryStore } from '../../../infrastructure/memory/memory-store';
+import { store } from '../../../infrastructure/store';
 import {
   MAX_UPLOAD_BYTES,
   createUploadSession,
@@ -57,12 +57,14 @@ export class UploadController {
     @Body(new StrictBodyPipe<PrecheckBody>(precheckSchema)) body: PrecheckBody,
     @Headers('authorization') authorization?: string,
   ) {
-    const user = requireUser(authorization);
+    const user = await requireUser(authorization);
 
-    if (!memoryStore.canAccessProject(user, body.projectId)) {
+    if (!(await store.canAccessProject(user, body.projectId))) {
       throw new DomainError('AUTH', 'VD-AUTH-404', '项目不存在', { status: 404 });
     }
-    if (!memoryStore.folders.has(body.folderId)) {
+
+    const folders = await store.listFolders(body.projectId);
+    if (!folders.some((folder) => folder.folderId === body.folderId)) {
       throw new DomainError('AUTH', 'VD-AUTH-404', '文件夹不存在', { status: 404 });
     }
     if (body.sizeBytes > MAX_UPLOAD_BYTES) {
@@ -70,7 +72,8 @@ export class UploadController {
     }
 
     if (body.sha256) {
-      const existing = [...memoryStore.files.values()].find(
+      const projectFiles = await store.listFiles(body.projectId);
+      const existing = projectFiles.find(
         (file) => file.sha256 === body.sha256 && file.sizeBytes === body.sizeBytes,
       );
       if (existing) {
@@ -109,18 +112,18 @@ export class UploadController {
   }
 
   @Get(':sessionId')
-  getSession(
+  async getSession(
     @Param('sessionId') sessionId: string,
     @Headers('authorization') authorization?: string,
   ) {
-    requireUser(authorization);
+    await requireUser(authorization);
     const session = uploadSessions.get(sessionId);
     if (!session) {
       throw new DomainError('AUTH', 'VD-AUTH-404', '上传会话不存在', { status: 404 });
     }
     return {
       sessionId: session.sessionId,
-      status: session.received.size === session.chunkCount ? 'uploading' : 'uploading',
+      status: 'uploading',
       receivedChunks: [...session.received].sort((left, right) => left - right),
       receivedBytes: session.received.size * session.chunkSize,
       expiresAt: session.expiresAt,
@@ -135,7 +138,7 @@ export class UploadController {
     @Headers('digest') digest?: string,
     @Headers('authorization') authorization?: string,
   ) {
-    requireUser(authorization);
+    await requireUser(authorization);
 
     const session = uploadSessions.get(sessionId);
     if (!session) {
@@ -171,7 +174,7 @@ export class UploadController {
     @Body(new StrictBodyPipe<CompleteBody>(completeSchema)) body: CompleteBody,
     @Headers('authorization') authorization?: string,
   ) {
-    const user = requireUser(authorization);
+    const user = await requireUser(authorization);
 
     const session = uploadSessions.get(sessionId);
     if (!session) {
@@ -193,7 +196,7 @@ export class UploadController {
     }
 
     const merged = await objectStorage.mergeChunks(sessionId, session.chunkCount, body.sha256);
-    const file = memoryStore.addFile({
+    const file = await store.addFile({
       projectId: session.projectId,
       folderId: session.folderId,
       fileName: session.fileName,
@@ -204,7 +207,7 @@ export class UploadController {
       objectPath: merged.objectPath,
     });
 
-    memoryStore.recordAudit({
+    await store.recordAudit({
       actor: user,
       action: 'file.upload',
       objectType: 'file',

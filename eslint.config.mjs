@@ -135,6 +135,12 @@ export default tseslint.config(
     },
   },
   {
+    files: ['apps/api/src/**/*-cli.ts'],
+    rules: {
+      'no-console': 'off',
+    },
+  },
+  {
     files: ['scripts/**/*.{mjs,js,ts}'],
     rules: {
       'no-console': 'off',

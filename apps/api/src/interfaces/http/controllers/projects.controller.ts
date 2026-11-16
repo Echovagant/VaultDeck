@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Headers, Param, Post } from '@nestjs/common';
 
-import { memoryStore } from '../../../infrastructure/memory/memory-store';
+import { store } from '../../../infrastructure/store';
 import { DomainError } from '../errors/problem-details';
 import { StrictBodyPipe } from '../validation/strict-body.pipe';
 import { requireUser } from './auth.controller';
@@ -38,41 +38,46 @@ const addMemberSchema = {
 @Controller('projects')
 export class ProjectsController {
   @Get()
-  list(@Headers('authorization') authorization?: string) {
-    const user = requireUser(authorization);
-    const visible = memoryStore.visibleProjectIds(user);
-    const items = [...memoryStore.projects.values()]
-      .filter((project) => (visible === null ? true : visible.includes(project.projectId)))
-      .map((project) => {
-        const files = [...memoryStore.files.values()].filter(
-          (file) => file.projectId === project.projectId && file.status === 'active',
-        );
-        return {
-          ...project,
-          fileCount: files.length,
-          totalBytes: files.reduce((sum, file) => sum + file.sizeBytes, 0),
-        };
+  async list(@Headers('authorization') authorization?: string) {
+    const user = await requireUser(authorization);
+    const visible = await store.visibleProjectIds(user);
+    const projects = await store.listProjects();
+
+    const items = [];
+    for (const project of projects) {
+      if (visible !== null && !visible.includes(project.projectId)) continue;
+      const files = (await store.listFiles(project.projectId)).filter(
+        (file) => file.status === 'active',
+      );
+      items.push({
+        ...project,
+        fileCount: files.length,
+        totalBytes: files.reduce((sum, file) => sum + file.sizeBytes, 0),
       });
+    }
     return { items };
   }
 
   @Post()
-  create(
+  async create(
     @Body(new StrictBodyPipe<CreateProjectBody>(createProjectSchema)) body: CreateProjectBody,
     @Headers('authorization') authorization?: string,
   ) {
-    const user = requireUser(authorization);
+    const user = await requireUser(authorization);
     if (user.role !== 'LEADER') {
       throw new DomainError('AUTH', 'VD-AUTH-404', '无权访问', { status: 404 });
     }
-    const duplicated = [...memoryStore.projects.values()].some(
+
+    const projects = await store.listProjects();
+    const duplicated = projects.some(
       (project) => project.projectCode.toLowerCase() === body.projectCode.toLowerCase(),
     );
     if (duplicated) {
       throw new DomainError('VAL', 'VD-VAL-002', '项目编码已存在', { status: 409 });
     }
-    const project = memoryStore.createProject(body);
-    memoryStore.recordAudit({
+
+    const project = await store.createProject(body);
+    await store.recordAudit({
       actor: user,
       action: 'project.create',
       objectType: 'project',
@@ -84,46 +89,53 @@ export class ProjectsController {
   }
 
   @Get(':projectId/members')
-  listMembers(
+  async listMembers(
     @Param('projectId') projectId: string,
     @Headers('authorization') authorization?: string,
   ) {
-    const user = requireUser(authorization);
-    if (!memoryStore.canAccessProject(user, projectId)) {
+    const user = await requireUser(authorization);
+    if (!(await store.canAccessProject(user, projectId))) {
       throw new DomainError('AUTH', 'VD-AUTH-404', '项目不存在', { status: 404 });
     }
-    const items = [...memoryStore.members.values()]
-      .filter((member) => member.projectId === projectId)
-      .map((member) => ({
+
+    const members = await store.listMembers(projectId);
+    const items = [];
+    for (const member of members) {
+      const account = await store.getUser(member.userId);
+      items.push({
         ...member,
-        username: memoryStore.users.get(member.userId)?.username ?? '',
-        displayName: memoryStore.users.get(member.userId)?.displayName ?? '',
-      }));
+        username: account?.username ?? '',
+        displayName: account?.displayName ?? '',
+      });
+    }
     return { items };
   }
 
   @Post(':projectId/members')
-  addMember(
+  async addMember(
     @Param('projectId') projectId: string,
     @Body(new StrictBodyPipe<AddMemberBody>(addMemberSchema)) body: AddMemberBody,
     @Headers('authorization') authorization?: string,
   ) {
-    const user = requireUser(authorization);
+    const user = await requireUser(authorization);
     if (user.role !== 'LEADER') {
       throw new DomainError('AUTH', 'VD-AUTH-404', '无权访问', { status: 404 });
     }
-    if (!memoryStore.projects.has(projectId)) {
+
+    const projects = await store.listProjects();
+    if (!projects.some((project) => project.projectId === projectId)) {
       throw new DomainError('AUTH', 'VD-AUTH-404', '项目不存在', { status: 404 });
     }
-    if (!memoryStore.users.has(body.userId)) {
+    if (!(await store.getUser(body.userId))) {
       throw new DomainError('VAL', 'VD-VAL-002', '用户不存在', { status: 404 });
     }
-    const member = memoryStore.addMember({
+
+    const member = await store.addMember({
       projectId,
       userId: body.userId,
       memberRole: body.memberRole,
     });
-    memoryStore.recordAudit({
+    await store.recordAudit({
       actor: user,
       action: 'project.member_add',
       objectType: 'project',
