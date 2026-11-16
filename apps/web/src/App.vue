@@ -55,12 +55,21 @@
             class="vd-search"
             @search="onSearch"
           />
-          <a-button type="text" @click="onLogout">退出登录</a-button>
+          <div class="vd-header-right">
+            <span class="vd-clock">{{ clock }}</span>
+            <span class="vd-header-user">{{ session.user.displayName }}（{{ roleLabel }}）</span>
+            <a-button type="text" @click="onLogout">退出登录</a-button>
+          </div>
         </a-layout-header>
 
         <a-layout-content :class="session.user ? 'vd-content' : 'vd-content-full'">
           <router-view />
         </a-layout-content>
+
+        <a-layout-footer v-if="session.user" class="vd-footer">
+          <span>Copyright © VaultDeck</span>
+          <span>技术支持：内部团队</span>
+        </a-layout-footer>
       </a-layout>
     </a-layout>
   </a-config-provider>
@@ -76,7 +85,7 @@ import {
   TagsOutlined,
   TeamOutlined,
 } from '@ant-design/icons-vue';
-import { computed, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
 import { useSessionStore } from '@/stores/session';
@@ -142,6 +151,21 @@ const roleLabel = computed(() => {
 
 const initials = computed(() => session.user?.displayName?.slice(0, 1) ?? 'U');
 const searchKeyword = ref('');
+const clock = ref('');
+let clockTimer: ReturnType<typeof setInterval> | null = null;
+
+function tickClock(): void {
+  clock.value = new Date().toLocaleString();
+}
+
+onMounted(() => {
+  tickClock();
+  clockTimer = setInterval(tickClock, 1000);
+});
+
+onUnmounted(() => {
+  if (clockTimer) clearInterval(clockTimer);
+});
 
 function onMenuClick({ key }: { key: string }): void {
   void router.push(key);
@@ -251,5 +275,31 @@ async function onLogout(): Promise<void> {
 
 .vd-content-full {
   padding: 0;
+}
+
+.vd-header-right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.vd-clock {
+  color: var(--vd-text-secondary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.vd-header-user {
+  color: var(--vd-text-secondary);
+  font-size: 13px;
+}
+
+.vd-footer {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 32px;
+  background: transparent;
+  color: var(--vd-text-secondary);
+  font-size: 12px;
 }
 </style>
