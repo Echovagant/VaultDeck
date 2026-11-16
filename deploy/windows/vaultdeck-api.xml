@@ -7,6 +7,7 @@
   <workingdirectory>%VAULTDECK_HOME%\current</workingdirectory>
   <env name="VD_STORE" value="postgres" />
   <env name="VD_DATABASE_URL" value="%VAULTDECK_DB_URL%" />
+  <env name="VD_MIGRATIONS_DIR" value="%VAULTDECK_HOME%\current\migrations" />
   <env name="VD_DATA_ROOT" value="%VAULTDECK_HOME%\data\storage" />
   <env name="VD_PREVIEW_CACHE" value="%VAULTDECK_HOME%\data\previews" />
   <env name="VD_SOFFICE_PATH" value="%VAULTDECK_HOME%\tools\libreoffice\program\soffice.exe" />
