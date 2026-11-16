@@ -29,7 +29,27 @@
       <div class="archive-tag vd-mono">LOCAL ARCHIVE</div>
     </div>
 
+    <div v-if="isNarrow" class="project-cards">
+      <article
+        v-for="item in projects"
+        :key="item.projectId"
+        class="project-card"
+        @click="openProject(item.projectId)"
+      >
+        <div class="project-card-head">
+          <span class="project-card-code vd-mono">{{ item.projectCode }}</span>
+          <span class="project-card-meta vd-mono">{{ formatBytes(item.totalBytes) }}</span>
+        </div>
+        <h3 class="project-card-name">{{ item.projectName }}</h3>
+        <div class="project-card-foot">
+          <span class="vd-mono">{{ item.fileCount }} 个文件</span>
+          <span class="project-card-link">查看资料 →</span>
+        </div>
+      </article>
+    </div>
+
     <a-table
+      v-else
       :columns="columns"
       :data-source="projects"
       :loading="loading"
@@ -72,10 +92,12 @@ import { computed, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { ApiError, api, formatBytes, type ProjectSummary } from '@/api/client';
+import { useMediaQuery } from '@/composables/useMediaQuery';
 import { useSessionStore } from '@/stores/session';
 
 const router = useRouter();
 const session = useSessionStore();
+const isNarrow = useMediaQuery('(max-width: 760px)');
 const projects = ref<ProjectSummary[]>([]);
 const totalFiles = computed(() => projects.value.reduce((sum, item) => sum + item.fileCount, 0));
 const totalBytes = computed(() => projects.value.reduce((sum, item) => sum + item.totalBytes, 0));
@@ -185,5 +207,87 @@ onMounted(load);
   color: var(--vd-ochre);
   font-size: 10px;
   letter-spacing: 0.24em;
+}
+
+.project-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.project-card {
+  padding: 14px 16px;
+  background: var(--vd-surface);
+  border: 1px solid var(--vd-border);
+  border-radius: var(--vd-radius);
+  cursor: pointer;
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.project-card:active {
+  border-color: var(--vd-border-strong);
+  box-shadow: 0 6px 18px rgba(58, 43, 28, 0.1);
+}
+
+.project-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.project-card-code {
+  color: var(--vd-accent);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+}
+
+.project-card-meta {
+  color: var(--vd-text-secondary);
+  font-size: 10px;
+}
+
+.project-card-name {
+  margin: 8px 0 10px;
+  font-family: var(--vd-font-display);
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.project-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 9px;
+  border-top: 1px solid var(--vd-border);
+  color: var(--vd-text-secondary);
+  font-size: 11px;
+}
+
+.project-card-link {
+  color: var(--vd-accent);
+  font-size: 11px;
+}
+
+@media (max-width: 760px) {
+  .archive-stats {
+    flex-wrap: wrap;
+    gap: 10px 0;
+    padding: 12px 0;
+  }
+
+  .archive-stat {
+    min-width: 86px;
+    padding: 0 14px;
+  }
+
+  .archive-value {
+    font-size: 19px;
+  }
+
+  .archive-tag {
+    display: none;
+  }
 }
 </style>

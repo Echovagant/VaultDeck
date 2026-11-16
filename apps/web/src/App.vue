@@ -3,17 +3,17 @@
     <a-layout class="vd-shell">
       <a-layout-sider
         v-if="session.user"
-        v-model:collapsed="collapsed"
+        :collapsed="siderCollapsed"
         :width="216"
         :collapsed-width="60"
         collapsible
         :trigger="null"
         :theme="isDark ? 'dark' : 'light'"
-        class="vd-sider"
+        :class="['vd-sider', { 'vd-sider-mobile': isMobile, 'vd-sider-open': drawerOpen }]"
       >
         <div class="vd-brand">
           <span class="vd-brand-mark">V</span>
-          <div v-if="!collapsed" class="vd-brand-text">
+          <div v-if="!siderCollapsed" class="vd-brand-text">
             <strong>VaultDeck</strong>
             <em>ARCHIVE DESK</em>
           </div>
@@ -23,7 +23,7 @@
           <a-menu
             mode="inline"
             :theme="isDark ? 'dark' : 'light'"
-            :inline-collapsed="collapsed"
+            :inline-collapsed="siderCollapsed"
             :selected-keys="[activePath]"
             class="vd-menu"
             @click="onMenuClick"
@@ -59,7 +59,7 @@
           </a-menu>
         </nav>
 
-        <div v-if="!collapsed" class="vd-sider-watermark" aria-hidden="true">
+        <div v-if="!siderCollapsed" class="vd-sider-watermark" aria-hidden="true">
           <span>VD</span>
           <em>ARCHIVE · NO.2026</em>
         </div>
@@ -70,7 +70,7 @@
               <a-avatar :size="32" :src="session.avatarBlobUrl || undefined" class="vd-avatar">
                 {{ initials }}
               </a-avatar>
-              <div v-if="!collapsed" class="vd-user-meta">
+              <div v-if="!siderCollapsed" class="vd-user-meta">
                 <div class="vd-user-name">{{ session.user.displayName }}</div>
                 <div class="vd-user-role">{{ roleLabel }}</div>
               </div>
@@ -83,15 +83,20 @@
             </template>
           </a-dropdown>
           <a-button type="text" class="collapse-btn" @click="toggleCollapsed">
-            <MenuFoldOutlined v-if="!collapsed" />
+            <MenuFoldOutlined v-if="!siderCollapsed" />
             <MenuUnfoldOutlined v-else />
           </a-button>
         </div>
       </a-layout-sider>
 
+      <div v-if="isMobile && drawerOpen" class="vd-sider-mask" @click="drawerOpen = false" />
+
       <a-layout class="vd-main">
         <a-layout-header v-if="session.user" class="vd-header">
           <div class="vd-header-left">
+            <a-button v-if="isMobile" type="text" class="nav-toggle" @click="drawerOpen = true">
+              <MenuUnfoldOutlined />
+            </a-button>
             <a-input-search
               v-model:value="searchKeyword"
               placeholder="检索文件名，回车搜索"
@@ -343,18 +348,39 @@ function tickClock(): void {
 onMounted(() => {
   tickClock();
   clockTimer = setInterval(tickClock, 30000);
+  window.addEventListener('resize', onResize);
 });
 
 onUnmounted(() => {
   if (clockTimer) clearInterval(clockTimer);
+  window.removeEventListener('resize', onResize);
 });
 
-const collapsed = ref(localStorage.getItem('vd_sider_collapsed') === '1');
+const userCollapsed = ref(localStorage.getItem('vd_sider_collapsed') === '1');
 const profileVisible = ref(false);
 
+const viewportWidth = ref(window.innerWidth);
+const isCompact = computed(() => viewportWidth.value < 1100);
+const isMobile = computed(() => viewportWidth.value < 860);
+const drawerOpen = ref(false);
+
+const siderCollapsed = computed(() =>
+  isMobile.value ? false : isCompact.value || userCollapsed.value,
+);
+
+function onResize(): void {
+  viewportWidth.value = window.innerWidth;
+  if (!isMobile.value) drawerOpen.value = false;
+}
+
 function toggleCollapsed(): void {
-  collapsed.value = !collapsed.value;
-  localStorage.setItem('vd_sider_collapsed', collapsed.value ? '1' : '0');
+  if (isMobile.value) {
+    drawerOpen.value = !drawerOpen.value;
+    return;
+  }
+  if (isCompact.value) return;
+  userCollapsed.value = !userCollapsed.value;
+  localStorage.setItem('vd_sider_collapsed', userCollapsed.value ? '1' : '0');
 }
 
 function onUserMenu({ key }: { key: string }): void {
@@ -384,7 +410,8 @@ async function onLogout(): Promise<void> {
 
 <style scoped>
 .vd-shell {
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
 }
 
 .vd-sider,
@@ -400,6 +427,38 @@ async function onLogout(): Promise<void> {
   flex-direction: column;
   height: 100%;
   background: transparent;
+}
+
+/* 手机端：侧栏改为覆盖式抽屉，不再挤压内容 */
+.vd-sider-mobile {
+  position: fixed !important;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 40;
+  width: 216px !important;
+  max-width: 216px !important;
+  min-width: 216px !important;
+  transform: translateX(-100%);
+  transition: transform 0.24s ease;
+  box-shadow: 12px 0 32px rgba(20, 17, 14, 0.18);
+}
+
+.vd-sider-mobile.vd-sider-open {
+  transform: none;
+}
+
+.vd-sider-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 35;
+  background: rgba(20, 17, 14, 0.44);
+  backdrop-filter: blur(2px);
+}
+
+.nav-toggle {
+  flex: 0 0 auto;
+  color: var(--vd-text);
 }
 
 .vd-brand {
@@ -593,22 +652,31 @@ async function onLogout(): Promise<void> {
 }
 
 .vd-main {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .vd-header {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 62px;
-  padding: 0 26px;
+  height: 72px;
+  padding: 0 28px;
   border-bottom: 1px solid var(--vd-border);
   background: var(--vd-paper);
 }
 
 .vd-header-left {
+  display: flex;
   flex: 1;
-  max-width: 360px;
+  align-items: center;
+  gap: 10px;
+  max-width: 440px;
 }
 
 .vd-search {
@@ -677,13 +745,18 @@ async function onLogout(): Promise<void> {
 
 /* 账本横线：极淡的纸纹，只在留白处可见 */
 .vd-content {
-  padding: 20px 26px 36px;
+  flex: 1;
+  min-height: 0;
+  padding: 22px 28px 36px;
+  overflow-x: hidden;
+  overflow-y: auto;
   background-image: repeating-linear-gradient(
     180deg,
     transparent 0 31px,
     var(--vd-paper-line) 31px 32px
   );
   background-attachment: local;
+  overscroll-behavior: contain;
 }
 
 .vd-content-full {
@@ -701,17 +774,23 @@ async function onLogout(): Promise<void> {
   letter-spacing: 0.04em;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 860px) {
   .vd-header {
-    padding: 0 16px;
+    height: 60px;
+    padding: 0 14px;
   }
 
   .vd-content {
-    padding: 16px 16px 28px;
+    padding: 14px 14px 26px;
+  }
+
+  .vd-header-left {
+    max-width: none;
   }
 
   .vd-avatar-name,
-  .theme-btn-label {
+  .theme-btn-label,
+  .vd-clock {
     display: none;
   }
 }

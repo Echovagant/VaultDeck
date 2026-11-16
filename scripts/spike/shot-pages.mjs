@@ -82,6 +82,8 @@ function connect(wsUrl) {
   });
 }
 
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 const token = await login('leader', 'leader123');
 
 try {
@@ -92,15 +94,6 @@ try {
 
   const client = await connect(page.webSocketDebuggerUrl);
   await client.send('Page.enable');
-  await client.send('Emulation.setDeviceMetricsOverride', {
-    width: 1440,
-    height: 1000,
-    deviceScaleFactor: 1,
-    mobile: false,
-  });
-
-  await client.send('Page.navigate', { url: `${APP}/login` });
-  await new Promise((resolve) => setTimeout(resolve, 2000));
 
   const projects = await (
     await fetch(`${BASE}/projects`, {
@@ -109,43 +102,73 @@ try {
   ).json();
   const project = projects.items.find((item) => item.projectCode === 'DEMO-001');
 
+  await client.send('Emulation.setDeviceMetricsOverride', {
+    width: 1440,
+    height: 1000,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  await client.send('Page.navigate', { url: `${APP}/login` });
+  await wait(1800);
+  await client.send('Runtime.evaluate', {
+    expression: `localStorage.setItem('vd_token', ${JSON.stringify(
+      token,
+    )}); localStorage.setItem('vd_theme', 'dark'); 'ok'`,
+  });
+
   const pages = [
     { name: 'projects', path: '/projects' },
-    { name: 'files', path: project ? `/projects/${project.projectId}/files` : '/projects' },
-    { name: 'admin', path: '/admin' },
-    { name: 'stats', path: '/stats' },
-    { name: 'login', path: '/login' },
+    { name: 'files', path: `/projects/${project.projectId}/files` },
   ];
 
-  for (const themeName of ['dark', 'light']) {
-    await client.send('Runtime.evaluate', {
-      expression: `localStorage.setItem('vd_token', ${JSON.stringify(
-        token,
-      )}); localStorage.setItem('vd_theme', '${themeName}'); 'ok'`,
-    });
+  const viewports = [
+    { label: 'desktop', width: 1440, height: 1000 },
+    { label: 'laptop', width: 1180, height: 820 },
+    { label: 'tablet', width: 900, height: 780 },
+    { label: 'phone', width: 390, height: 844 },
+  ];
 
-    for (const target of pages) {
+  for (const target of pages) {
+    for (const viewport of viewports) {
+      await client.send('Emulation.setDeviceMetricsOverride', {
+        width: viewport.width,
+        height: viewport.height,
+        deviceScaleFactor: 1,
+        mobile: false,
+      });
       await client.send('Page.navigate', { url: `${APP}${target.path}` });
-      await new Promise((resolve) => setTimeout(resolve, 2600));
+      await wait(900);
+      await client.send('Runtime.evaluate', {
+        expression: 'window.dispatchEvent(new Event("resize")); "ok"',
+      });
+      await wait(700);
       const shot = await client.send('Page.captureScreenshot', { format: 'png' });
-      const file = path.join(OUT_DIR, `${themeName}-${target.name}.png`);
+      const file = path.join(OUT_DIR, `${viewport.label}-${target.name}.png`);
       writeFileSync(file, Buffer.from(shot.result.data, 'base64'));
-      console.log(`${themeName}/${target.name} -> ${file}`);
+
+      const metrics = await client.send('Runtime.evaluate', {
+        expression: `JSON.stringify({ doc: document.documentElement.scrollHeight, win: window.innerHeight, body: document.body.scrollHeight })`,
+        returnByValue: true,
+      });
+      const value = JSON.parse(metrics.result.result.value);
+      console.log(
+        `${viewport.label}/${target.name} -> ${file} (docH=${value.doc} winH=${value.win} bodyH=${value.body})`,
+      );
+
+      if (target.name === 'files' && viewport.label === 'phone') {
+        await client.send('Runtime.evaluate', {
+          expression: `document.querySelectorAll('.ant-segmented-item')[1]?.click(); 'ok'`,
+        });
+        await wait(700);
+        const listShot = await client.send('Page.captureScreenshot', { format: 'png' });
+        writeFileSync(
+          path.join(OUT_DIR, 'phone-files-list.png'),
+          Buffer.from(listShot.result.data, 'base64'),
+        );
+        console.log('phone/files-list -> phone-files-list.png');
+      }
     }
   }
-
-  await client.send('Page.navigate', { url: `${APP}/projects` });
-  await new Promise((resolve) => setTimeout(resolve, 2200));
-  await client.send('Runtime.evaluate', {
-    expression: `localStorage.setItem('vd_theme', 'dark'); 'ok'`,
-  });
-  await client.send('Page.reload');
-  await new Promise((resolve) => setTimeout(resolve, 2200));
-  await client.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 150, y: 140 });
-  await new Promise((resolve) => setTimeout(resolve, 800));
-  const hoverShot = await client.send('Page.captureScreenshot', { format: 'png' });
-  writeFileSync(path.join(OUT_DIR, 'dark-hover.png'), Buffer.from(hoverShot.result.data, 'base64'));
-  console.log('dark/hover -> dark-hover.png');
 
   client.close();
 } finally {

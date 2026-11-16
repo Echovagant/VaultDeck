@@ -1,6 +1,11 @@
 <template>
   <div class="files-layout" :class="{ 'aside-collapsed': asideCollapsed }">
     <aside v-show="!asideCollapsed" class="files-aside">
+      <div class="aside-head">
+        <span class="vd-eyebrow">INDEX</span>
+        <span class="aside-head-label">目录</span>
+      </div>
+
       <div class="aside-search">
         <a-input
           v-model:value="folderSearch"
@@ -31,90 +36,93 @@
     </aside>
 
     <main class="files-main">
-      <a-tabs
-        v-model:active-key="activeTab"
-        type="editable-card"
-        hide-add
-        size="small"
-        @change="onTabChange"
-        @edit="onTabEdit"
-      >
-        <a-tab-pane v-for="tab in tabsStore.tabs" :key="tab.projectId" :tab="tab.projectName" />
-        <template #tabBarExtraContent>
-          <a-button size="small" type="text" @click="clearTabs">清除</a-button>
-        </template>
-      </a-tabs>
+      <section class="files-panel">
+        <a-tabs
+          v-model:active-key="activeTab"
+          type="editable-card"
+          hide-add
+          size="small"
+          @change="onTabChange"
+          @edit="onTabEdit"
+        >
+          <a-tab-pane v-for="tab in tabsStore.tabs" :key="tab.projectId" :tab="tab.projectName" />
+          <template #tabBarExtraContent>
+            <a-button size="small" type="text" @click="clearTabs">清除</a-button>
+          </template>
+        </a-tabs>
 
-      <div class="files-toolbar">
-        <div class="toolbar-row">
-          <a-button
-            type="text"
-            class="aside-toggle"
-            :title="asideCollapsed ? '展开目录' : '收起目录'"
-            @click="toggleAside"
-          >
-            <MenuUnfoldOutlined v-if="asideCollapsed" />
-            <MenuFoldOutlined v-else />
-          </a-button>
-          <h2 class="files-title">{{ currentFolderName || projectName || '项目资料' }}</h2>
-          <a-dropdown>
-            <a-button type="primary">
-              上传
-              <DownOutlined />
+        <div class="files-toolbar">
+          <div class="toolbar-row">
+            <a-button
+              type="text"
+              class="aside-toggle"
+              :title="asideCollapsed ? '展开目录' : '收起目录'"
+              @click="toggleAside"
+            >
+              <MenuUnfoldOutlined v-if="asideCollapsed" />
+              <MenuFoldOutlined v-else />
             </a-button>
-            <template #overlay>
-              <a-menu @click="onUploadMenu">
-                <a-menu-item key="files">上传文件</a-menu-item>
-                <a-menu-item key="dir">导入目录</a-menu-item>
-              </a-menu>
-            </template>
-          </a-dropdown>
-          <a-dropdown>
-            <a-button>
-              新建
-              <DownOutlined />
+            <h2 class="files-title">{{ currentFolderName || projectName || '项目资料' }}</h2>
+            <a-dropdown>
+              <a-button type="primary">
+                上传
+                <DownOutlined />
+              </a-button>
+              <template #overlay>
+                <a-menu @click="onUploadMenu">
+                  <a-menu-item key="files">上传文件</a-menu-item>
+                  <a-menu-item key="dir">导入目录</a-menu-item>
+                </a-menu>
+              </template>
+            </a-dropdown>
+            <a-dropdown>
+              <a-button>
+                新建
+                <DownOutlined />
+              </a-button>
+              <template #overlay>
+                <a-menu @click="onCreateMenu">
+                  <a-menu-item key="folder">新建文件夹</a-menu-item>
+                  <a-menu-item v-if="session.user?.role === 'LEADER'" key="project">
+                    新建项目
+                  </a-menu-item>
+                </a-menu>
+              </template>
+            </a-dropdown>
+            <div class="toolbar-spacer" />
+            <a-segmented v-model:value="viewMode" :options="viewOptions" />
+            <a-button type="text" title="文件夹管理" @click="folderManagerVisible = true">
+              <SettingOutlined />
             </a-button>
-            <template #overlay>
-              <a-menu @click="onCreateMenu">
-                <a-menu-item key="folder">新建文件夹</a-menu-item>
-                <a-menu-item v-if="session.user?.role === 'LEADER'" key="project">
-                  新建项目
-                </a-menu-item>
-              </a-menu>
-            </template>
-          </a-dropdown>
-          <div class="toolbar-spacer" />
-          <a-segmented v-model:value="viewMode" :options="viewOptions" />
-          <a-button type="text" title="文件夹管理" @click="folderManagerVisible = true">
-            <SettingOutlined />
-          </a-button>
+          </div>
+
+          <div class="toolbar-row toolbar-row-filter">
+            <a-input
+              v-model:value="folderFilter"
+              placeholder="请输入文件夹名称"
+              allow-clear
+              class="folder-filter"
+              style="width: 180px"
+            />
+            <a-select v-model:value="typeFilter" style="width: 130px" :options="typeOptions" />
+            <a-button @click="resetFilter">重置</a-button>
+            <a-button type="primary" @click="applyFilter">搜索</a-button>
+            <span class="files-count">
+              文件夹 {{ visibleFolders.length }} 个 · 文件 {{ visibleFiles.length }} 个
+            </span>
+          </div>
         </div>
 
-        <div class="toolbar-row toolbar-row-filter">
-          <a-input
-            v-model:value="folderFilter"
-            placeholder="请输入文件夹名称"
-            allow-clear
-            style="width: 180px"
-          />
-          <a-select v-model:value="typeFilter" style="width: 130px" :options="typeOptions" />
-          <a-button @click="resetFilter">重置</a-button>
-          <a-button type="primary" @click="applyFilter">搜索</a-button>
-          <span class="files-count">
-            文件夹 {{ visibleFolders.length }} 个 · 文件 {{ visibleFiles.length }} 个
-          </span>
-        </div>
-      </div>
-
-      <a-breadcrumb class="files-crumb">
-        <a-breadcrumb-item>
-          <a @click="onTreeSelect(null)">全部</a>
-        </a-breadcrumb-item>
-        <a-breadcrumb-item>{{ projectName || '项目资料' }}</a-breadcrumb-item>
-        <a-breadcrumb-item v-for="node in breadcrumb" :key="node.folderId">
-          <a @click="onTreeSelect(node.folderId)">{{ node.folderName }}</a>
-        </a-breadcrumb-item>
-      </a-breadcrumb>
+        <a-breadcrumb class="files-crumb">
+          <a-breadcrumb-item>
+            <a @click="onTreeSelect(null)">全部</a>
+          </a-breadcrumb-item>
+          <a-breadcrumb-item>{{ projectName || '项目资料' }}</a-breadcrumb-item>
+          <a-breadcrumb-item v-for="node in breadcrumb" :key="node.folderId">
+            <a @click="onTreeSelect(node.folderId)">{{ node.folderName }}</a>
+          </a-breadcrumb-item>
+        </a-breadcrumb>
+      </section>
 
       <div v-if="uploading" class="progress-box">
         <a-progress :percent="percent" :status="percent === 100 ? 'success' : 'active'" />
@@ -125,11 +133,12 @@
         <div
           v-for="folder in visibleFolders"
           :key="folder.folderId"
-          class="grid-card"
+          class="grid-card grid-folder"
           @dblclick="onTreeSelect(folder.folderId)"
         >
           <FolderFilled class="folder-icon" />
           <span class="grid-name" :title="folder.folderName">{{ folder.folderName }}</span>
+          <span class="grid-meta vd-mono">FOLDER</span>
         </div>
         <div
           v-for="file in visibleFiles"
@@ -137,8 +146,9 @@
           class="grid-card"
           @click="onFileClick(file)"
         >
-          <FileOutlined class="file-icon" />
+          <FileOutlined class="file-icon" :style="{ color: fileTone(file.fileName) }" />
           <span class="grid-name" :title="file.fileName">{{ file.fileName }}</span>
+          <span class="grid-meta vd-mono">{{ formatBytes(file.sizeBytes) }}</span>
           <span v-if="file.hasContent === false" class="sample-badge">示例</span>
         </div>
         <a-empty
@@ -146,6 +156,38 @@
           description="暂无资料"
           class="empty-block"
         />
+      </div>
+
+      <div v-else-if="isNarrow" class="file-cards">
+        <article v-for="file in visibleFiles" :key="file.fileId" class="file-card">
+          <div class="file-card-main" @click="onFileClick(file)">
+            <FileOutlined class="file-card-icon" :style="{ color: fileTone(file.fileName) }" />
+            <div class="file-card-text">
+              <span class="file-card-name" :title="file.fileName">{{ file.fileName }}</span>
+              <span class="file-card-meta vd-mono">{{ formatBytes(file.sizeBytes) }}</span>
+            </div>
+            <span v-if="file.hasContent === false" class="sample-badge">示例</span>
+          </div>
+          <div class="file-card-actions">
+            <a-button
+              type="link"
+              size="small"
+              :disabled="file.hasContent === false"
+              @click="openPreview(file)"
+            >
+              预览
+            </a-button>
+            <a-button
+              type="link"
+              size="small"
+              :disabled="file.hasContent === false"
+              @click="download(file)"
+            >
+              下载
+            </a-button>
+            <a-button type="link" size="small" danger @click="remove(file)">删除</a-button>
+          </div>
+        </article>
       </div>
 
       <a-table
@@ -287,6 +329,7 @@ import {
   type FolderItem,
   type ProjectSummary,
 } from '@/api/client';
+import { useMediaQuery } from '@/composables/useMediaQuery';
 import FolderManagerDialog from '@/features/folders/FolderManagerDialog.vue';
 import FolderTree from '@/features/folders/FolderTree.vue';
 import FilePreviewDialog from '@/features/preview/FilePreviewDialog.vue';
@@ -294,6 +337,35 @@ import { importDirectory, type ImportResult } from '@/features/upload/directory-
 import { uploadFile } from '@/features/upload/uploader';
 import { useSessionStore } from '@/stores/session';
 import { useTabsStore } from '@/stores/tabs';
+
+const TYPE_TONE: Record<string, string> = {
+  doc: '#8f3620',
+  docx: '#8f3620',
+  rtf: '#8f3620',
+  odt: '#8f3620',
+  pdf: '#b4482c',
+  xls: '#4f7a52',
+  xlsx: '#4f7a52',
+  csv: '#4f7a52',
+  ods: '#4f7a52',
+  ppt: '#c8922f',
+  pptx: '#c8922f',
+  odp: '#c8922f',
+  png: '#6b4a6b',
+  jpg: '#6b4a6b',
+  jpeg: '#6b4a6b',
+  gif: '#6b4a6b',
+  webp: '#6b4a6b',
+  svg: '#6b4a6b',
+  zip: '#7a6e60',
+  rar: '#7a6e60',
+  '7z': '#7a6e60',
+};
+
+function fileTone(fileName: string): string {
+  const ext = fileName.split('.').pop()?.toLowerCase() ?? '';
+  return TYPE_TONE[ext] ?? '#7a6e60';
+}
 
 interface FolderHit {
   folderId: string;
@@ -314,6 +386,7 @@ interface CategoryItem {
 const route = useRoute();
 const router = useRouter();
 const tabsStore = useTabsStore();
+const isNarrow = useMediaQuery('(max-width: 760px)');
 const session = useSessionStore();
 const projectId = String(route.params.projectId ?? '');
 
@@ -850,6 +923,22 @@ onMounted(async () => {
   border-radius: var(--vd-radius);
 }
 
+.aside-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 9px;
+  margin-bottom: 11px;
+  border-bottom: 1px solid var(--vd-border);
+}
+
+.aside-head-label {
+  color: var(--vd-text-secondary);
+  font-family: var(--vd-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+}
+
 .aside-search {
   display: flex;
   gap: 8px;
@@ -903,12 +992,24 @@ onMounted(async () => {
   min-width: 0;
 }
 
-.files-toolbar {
-  padding: 12px 14px;
-  margin: 8px 0 14px;
+.files-panel {
+  margin-bottom: 16px;
+  padding-top: 4px;
   background: var(--vd-surface);
   border: 1px solid var(--vd-border);
   border-radius: var(--vd-radius);
+  overflow: hidden;
+}
+
+.files-panel :deep(.ant-tabs-nav) {
+  margin: 0;
+  padding: 0 14px;
+}
+
+.files-toolbar {
+  padding: 10px 16px 12px;
+  margin: 0;
+  border-top: 1px solid var(--vd-border);
 }
 
 .toolbar-row {
@@ -943,13 +1044,14 @@ onMounted(async () => {
 }
 
 .files-crumb {
-  margin-bottom: 14px;
+  padding: 9px 16px 11px;
+  border-top: 1px solid var(--vd-border);
 }
 
 .grid-area {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(146px, 1fr));
+  gap: 12px;
   min-height: 200px;
 }
 
@@ -957,20 +1059,34 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
-  padding: 18px 12px;
+  gap: 7px;
+  min-height: 130px;
+  padding: 16px 12px 12px;
   background: var(--vd-surface);
   border: 1px solid var(--vd-border);
   border-radius: var(--vd-radius);
   cursor: pointer;
   transition:
     box-shadow 0.2s ease,
-    border-color 0.2s ease;
+    border-color 0.2s ease,
+    transform 0.2s ease;
 }
 
 .grid-card:hover {
   border-color: var(--vd-border-strong);
   box-shadow: 0 8px 24px rgba(58, 43, 28, 0.08);
+  transform: translateY(-2px);
+}
+
+.grid-meta {
+  color: var(--vd-text-secondary);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.grid-folder .grid-meta {
+  color: var(--vd-ochre);
 }
 
 .folder-icon {
@@ -1001,6 +1117,62 @@ onMounted(async () => {
   font-size: 11px;
 }
 
+/* 窄屏列表：一行一个档案卡，替代被压扁的表格 */
+.file-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.file-card {
+  overflow: hidden;
+  background: var(--vd-surface);
+  border: 1px solid var(--vd-border);
+  border-radius: var(--vd-radius);
+}
+
+.file-card-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px 10px;
+  cursor: pointer;
+}
+
+.file-card-icon {
+  flex: 0 0 auto;
+  font-size: 22px;
+}
+
+.file-card-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.file-card-name {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-card-meta {
+  color: var(--vd-text-secondary);
+  font-size: 10px;
+}
+
+.file-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 2px;
+  padding: 0 8px 6px;
+  border-top: 1px solid var(--vd-border);
+}
+
 .empty-block {
   grid-column: 1 / -1;
 }
@@ -1025,5 +1197,45 @@ onMounted(async () => {
 .files-count {
   color: var(--vd-text-secondary);
   font-size: 13px;
+}
+
+@media (max-width: 1180px) {
+  .files-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .files-aside {
+    display: none;
+  }
+
+  .aside-toggle {
+    display: none;
+  }
+}
+
+@media (max-width: 680px) {
+  .grid-area {
+    grid-template-columns: repeat(auto-fill, minmax(116px, 1fr));
+    gap: 10px;
+  }
+
+  .files-toolbar {
+    padding: 8px 12px 10px;
+  }
+
+  .files-crumb {
+    display: none;
+  }
+
+  /* 手机上收掉重复信息，把首屏留给内容 */
+  .files-title,
+  .folder-filter,
+  .toolbar-spacer {
+    display: none;
+  }
+
+  .toolbar-row-filter {
+    margin-top: 8px;
+  }
 }
 </style>
