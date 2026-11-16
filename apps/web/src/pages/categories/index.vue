@@ -30,12 +30,19 @@
           </a-tag>
         </template>
         <template v-else-if="column.key === 'actions'">
-          <a-button type="link" :disabled="record.isSystem" @click="openEdit(record)">
-            编辑
-          </a-button>
-          <a-button type="link" danger :disabled="record.isSystem" @click="remove(record)">
-            删除
-          </a-button>
+          <div class="row-actions">
+            <a-button
+              type="link"
+              class="edit-link"
+              :disabled="record.isSystem"
+              @click="openEdit(record)"
+            >
+              编辑
+            </a-button>
+            <a-button type="link" danger :disabled="record.isSystem" @click="remove(record)">
+              删除
+            </a-button>
+          </div>
         </template>
       </template>
     </a-table>
@@ -64,7 +71,7 @@
 </template>
 
 <script setup lang="ts">
-import { message } from 'ant-design-vue';
+import { Modal, message } from 'ant-design-vue';
 import { onMounted, reactive, ref } from 'vue';
 
 import { ApiError, api } from '@/api/client';
@@ -162,6 +169,19 @@ async function save(): Promise<void> {
 }
 
 async function remove(item: CategoryItem): Promise<void> {
+  const confirmed = await new Promise<boolean>((resolve) => {
+    Modal.confirm({
+      title: '删除分类',
+      content: `将删除分类「${item.categoryName}」，该操作不可恢复；已有文件不受影响。`,
+      okText: '删除',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: () => resolve(true),
+      onCancel: () => resolve(false),
+    });
+  });
+  if (!confirmed) return;
+
   try {
     await api(`/categories/${item.categoryId}`, { method: 'DELETE' });
     message.success('已删除');
@@ -173,3 +193,21 @@ async function remove(item: CategoryItem): Promise<void> {
 
 onMounted(load);
 </script>
+<style scoped>
+.row-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+/* 编辑是中性操作，用墨色；删除保留 danger 砖红，两者不再混淆 */
+.edit-link {
+  color: #5a4f42 !important;
+  font-weight: 500;
+}
+
+.edit-link:hover {
+  color: var(--vd-text) !important;
+  background: var(--vd-surface-sunken) !important;
+}
+</style>

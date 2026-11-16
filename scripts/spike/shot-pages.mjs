@@ -121,6 +121,7 @@ try {
     { name: 'files', path: `/projects/${project.projectId}/files` },
     { name: 'settings', path: '/settings', desktopOnly: true },
     { name: 'trash', path: '/trash', desktopOnly: true },
+    { name: 'categories', path: '/categories', desktopOnly: true },
   ];
 
   const viewports = [
