@@ -3,14 +3,14 @@ import path from 'node:path';
 
 import { Client } from 'pg';
 
+import { migrationsDir } from './migrations-path';
+
 interface Migration {
   version: number;
   name: string;
   up: string;
   down: string;
 }
-
-const migrationsDir = path.resolve('apps/api/src/infrastructure/db/migrations');
 
 function loadMigrations(): Migration[] {
   const files = readdirSync(migrationsDir).filter((file) => file.endsWith('.up.sql'));

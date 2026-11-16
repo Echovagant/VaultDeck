@@ -1,6 +1,9 @@
+import { readdirSync } from 'node:fs';
+
 import { Pool } from 'pg';
 
 import type { StorePort } from '../application/ports/store.port';
+import { migrationsDir } from './db/migrations-path';
 import { TRASH_RETENTION_DAYS, memoryStore } from './memory/memory-store';
 import { PgStore, bootstrapDemoData } from './postgres/pg-store';
 
@@ -28,12 +31,17 @@ export const storeKind = usePostgres ? 'postgres' : 'memory';
 export async function prepareStore(): Promise<void> {
   if (!activePool) return;
 
+  // 连接失败必须显式暴露：吞掉会把「连不上」误报成「未初始化」，排障时误导方向
   const migrationTable = await activePool
     .query<{ count: string }>(
       `SELECT count(*) FROM information_schema.tables
        WHERE table_schema = current_schema() AND table_name = 'schema_migration'`,
     )
-    .catch(() => null);
+    .catch((error: unknown) => {
+      throw new Error(
+        `数据库连接失败：${error instanceof Error ? error.message : String(error)}`,
+      );
+    });
 
   if (!migrationTable || Number(migrationTable.rows[0]?.count ?? 0) === 0) {
     throw new Error('数据库未初始化：请先运行 npm run db:migrate');
@@ -42,8 +50,15 @@ export async function prepareStore(): Promise<void> {
   const applied = await activePool.query<{ count: string }>(
     'SELECT count(*) FROM schema_migration',
   );
-  if (Number(applied.rows[0]?.count ?? 0) < 3) {
-    throw new Error('数据库迁移不完整：请先运行 npm run db:migrate');
+  // 门禁与 migrate-cli 保持同一事实源：已应用版本数必须覆盖迁移目录里的全部 .up.sql
+  const expectedMigrations = readdirSync(migrationsDir).filter((file) =>
+    file.endsWith('.up.sql'),
+  ).length;
+  const appliedCount = Number(applied.rows[0]?.count ?? 0);
+  if (appliedCount < expectedMigrations) {
+    throw new Error(
+      `数据库迁移不完整：已应用 ${appliedCount}/${expectedMigrations}，请先运行 npm run db:migrate`,
+    );
   }
 
   await bootstrapDemoData(activePool);
