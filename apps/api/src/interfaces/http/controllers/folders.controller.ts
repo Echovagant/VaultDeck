@@ -51,6 +51,51 @@ const updateFolderSchema = {
 
 @Controller('folders')
 export class FoldersController {
+  @Get('search')
+  async search(
+    @Query('q') keywordRaw: string | undefined,
+    @Headers('authorization') authorization?: string,
+  ) {
+    const user = await requireUser(authorization);
+    const keyword = (keywordRaw ?? '').trim().toLowerCase();
+    if (keyword.length === 0) {
+      throw new DomainError('VAL', 'VD-VAL-001', '缺少搜索关键词', { status: 400 });
+    }
+
+    const visible = await store.visibleProjectIds(user);
+    const projects = await store.listProjects();
+    const items = [];
+
+    for (const project of projects) {
+      if (visible !== null && !visible.includes(project.projectId)) continue;
+      const folders = await store.listFolders(project.projectId);
+      const byId = new Map(folders.map((folder) => [folder.folderId, folder]));
+
+      for (const folder of folders) {
+        if (!folder.folderName.toLowerCase().includes(keyword)) continue;
+
+        const chain: string[] = [];
+        let current: typeof folder | undefined = folder;
+        let guard = 0;
+        while (current && guard < 20) {
+          chain.unshift(current.folderName);
+          current = current.parentId ? byId.get(current.parentId) : undefined;
+          guard += 1;
+        }
+
+        items.push({
+          folderId: folder.folderId,
+          folderName: folder.folderName,
+          projectId: project.projectId,
+          projectName: project.projectName,
+          path: chain.join(' / '),
+        });
+      }
+    }
+
+    return { items: items.slice(0, 100) };
+  }
+
   @Get()
   async list(
     @Query('projectId') projectId: string | undefined,

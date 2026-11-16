@@ -3,14 +3,31 @@
     <aside class="files-aside">
       <div class="aside-search">
         <a-input
-          v-model:value="fileSearch"
-          placeholder="请输入文件名"
+          v-model:value="folderSearch"
+          placeholder="请输入文件夹名称"
           allow-clear
-          @press-enter="applyFilter"
+          @press-enter="searchFolders"
         />
-        <a-button type="primary" @click="applyFilter">查询</a-button>
+        <a-button type="primary" :loading="searching" @click="searchFolders">查询</a-button>
       </div>
-      <FolderTree :folders="folders" :selected-id="folderId ?? null" @select="onTreeSelect" />
+
+      <div v-if="folderHits.length > 0" class="hit-list">
+        <div class="hit-head">
+          <span>搜索结果 {{ folderHits.length }} 个</span>
+          <a-button type="link" size="small" @click="clearFolderSearch">返回目录</a-button>
+        </div>
+        <div v-for="hit in folderHits" :key="hit.folderId" class="hit-item" @click="openHit(hit)">
+          <div class="hit-name">{{ hit.folderName }}</div>
+          <div class="hit-path">{{ hit.projectName }} · {{ hit.path }}</div>
+        </div>
+      </div>
+
+      <FolderTree
+        v-else
+        :folders="folders"
+        :selected-id="folderId ?? null"
+        @select="onTreeSelect"
+      />
     </aside>
 
     <main class="files-main">
@@ -19,11 +36,12 @@
         type="editable-card"
         hide-add
         size="small"
+        @change="onTabChange"
         @edit="onTabEdit"
       >
-        <a-tab-pane :key="projectId" :tab="projectName || '项目资料'" />
+        <a-tab-pane v-for="tab in tabsStore.tabs" :key="tab.projectId" :tab="tab.projectName" />
         <template #tabBarExtraContent>
-          <a-button size="small" type="text" @click="clearTab">清除</a-button>
+          <a-button size="small" type="text" @click="clearTabs">清除</a-button>
         </template>
       </a-tabs>
 
@@ -63,7 +81,7 @@
             allow-clear
             style="width: 180px"
           />
-          <a-select v-model:value="typeFilter" style="width: 120px" :options="typeOptions" />
+          <a-select v-model:value="typeFilter" style="width: 130px" :options="typeOptions" />
           <a-button @click="resetFilter">重置</a-button>
           <a-button type="primary" @click="applyFilter">搜索</a-button>
           <a-segmented v-model:value="viewMode" :options="viewOptions" />
@@ -163,6 +181,24 @@
 
       <FilePreviewDialog v-model="previewVisible" :file="previewFile" />
 
+      <a-modal
+        v-model:open="createProjectVisible"
+        title="新建项目"
+        :confirm-loading="creatingProject"
+        ok-text="创建并打开"
+        cancel-text="取消"
+        @ok="createProject"
+      >
+        <a-form layout="vertical">
+          <a-form-item label="项目编码">
+            <a-input v-model:value="projectForm.projectCode" placeholder="例如 ARCH-2026-001" />
+          </a-form-item>
+          <a-form-item label="项目名称">
+            <a-input v-model:value="projectForm.projectName" />
+          </a-form-item>
+        </a-form>
+      </a-modal>
+
       <a-modal v-model:open="importVisible" title="导入结果" :footer="null" width="720px">
         <a-alert
           type="info"
@@ -225,9 +261,27 @@ import FolderTree from '@/features/folders/FolderTree.vue';
 import FilePreviewDialog from '@/features/preview/FilePreviewDialog.vue';
 import { importDirectory, type ImportResult } from '@/features/upload/directory-importer';
 import { uploadFile } from '@/features/upload/uploader';
+import { useTabsStore } from '@/stores/tabs';
+
+interface FolderHit {
+  folderId: string;
+  folderName: string;
+  projectId: string;
+  projectName: string;
+  path: string;
+}
+
+interface CategoryItem {
+  categoryId: string;
+  categoryCode: string;
+  categoryName: string;
+  extensions: string[];
+  isSystem: boolean;
+}
 
 const route = useRoute();
 const router = useRouter();
+const tabsStore = useTabsStore();
 const projectId = String(route.params.projectId ?? '');
 
 const projectName = ref('');
@@ -237,10 +291,14 @@ const folderId = ref<string | undefined>(undefined);
 const loading = ref(false);
 const activeTab = ref(projectId);
 
-const fileSearch = ref('');
+const folderSearch = ref('');
+const folderHits = ref<FolderHit[]>([]);
+const searching = ref(false);
+
 const folderFilter = ref('');
 const typeFilter = ref('all');
 const viewMode = ref<'grid' | 'list'>('grid');
+const categories = ref<CategoryItem[]>([]);
 
 const folderManagerVisible = ref(false);
 const previewVisible = ref(false);
@@ -259,7 +317,11 @@ const importVisible = ref(false);
 const importResults = ref<ImportResult[]>([]);
 const importSummary = reactive({ success: 0, skipped: 0, failed: 0 });
 
-const typeOptions = [
+const createProjectVisible = ref(false);
+const creatingProject = ref(false);
+const projectForm = reactive({ projectCode: '', projectName: '' });
+
+const FALLBACK_TYPE_OPTIONS = [
   { label: '全部', value: 'all' },
   { label: '图片', value: 'image' },
   { label: '音频', value: 'audio' },
@@ -269,18 +331,18 @@ const typeOptions = [
   { label: '其他', value: 'other' },
 ];
 
-const viewOptions = [
-  { label: '网格', value: 'grid' },
-  { label: '列表', value: 'list' },
-];
-
-const TYPE_EXTENSIONS: Record<string, string[]> = {
+const FALLBACK_EXTENSIONS: Record<string, string[]> = {
   image: ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg'],
   audio: ['.mp3', '.wav', '.flac', '.aac', '.m4a'],
   video: ['.mp4', '.mov', '.avi', '.mkv', '.wmv'],
   survey: ['.dwg', '.dxf', '.shp', '.kml', '.geojson', '.las'],
   document: ['.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.pdf', '.txt', '.csv'],
 };
+
+const viewOptions = [
+  { label: '网格', value: 'grid' },
+  { label: '列表', value: 'list' },
+];
 
 const columns = [
   { title: '文件名', dataIndex: 'fileName', key: 'fileName' },
@@ -304,6 +366,18 @@ const rowSelection = computed(() => ({
   },
 }));
 
+const typeOptions = computed(() =>
+  categories.value.length > 0
+    ? [
+        { label: '全部', value: 'all' },
+        ...categories.value.map((category) => ({
+          label: category.categoryName,
+          value: category.categoryId,
+        })),
+      ]
+    : FALLBACK_TYPE_OPTIONS,
+);
+
 function extensionOf(name: string): string {
   const parts = name.split('.');
   return parts.length > 1 ? `.${parts[parts.length - 1]?.toLowerCase() ?? ''}` : '';
@@ -311,11 +385,24 @@ function extensionOf(name: string): string {
 
 function matchesType(name: string): boolean {
   if (typeFilter.value === 'all') return true;
-  const ext = extensionOf(name);
-  if (typeFilter.value === 'other') {
-    return !Object.values(TYPE_EXTENSIONS).some((list) => list.includes(ext));
+
+  const extension = extensionOf(name);
+
+  if (categories.value.length > 0) {
+    const category = categories.value.find((item) => item.categoryId === typeFilter.value);
+    if (!category) return true;
+    if (category.categoryCode === 'OTHER') {
+      return !categories.value.some(
+        (item) => item.categoryCode !== 'OTHER' && item.extensions.includes(extension),
+      );
+    }
+    return category.extensions.includes(extension);
   }
-  return (TYPE_EXTENSIONS[typeFilter.value] ?? []).includes(ext);
+
+  if (typeFilter.value === 'other') {
+    return !Object.values(FALLBACK_EXTENSIONS).some((list) => list.includes(extension));
+  }
+  return (FALLBACK_EXTENSIONS[typeFilter.value] ?? []).includes(extension);
 }
 
 const visibleFolders = computed(() =>
@@ -330,8 +417,8 @@ const visibleFolders = computed(() =>
 const visibleFiles = computed(() =>
   files.value.filter(
     (file) =>
-      (fileSearch.value.trim().length === 0 ||
-        file.fileName.toLowerCase().includes(fileSearch.value.trim().toLowerCase())) &&
+      (folderSearch.value.trim().length === 0 ||
+        file.fileName.toLowerCase().includes(folderSearch.value.trim().toLowerCase())) &&
       matchesType(file.fileName),
   ),
 );
@@ -353,11 +440,10 @@ const breadcrumb = computed(() => {
 });
 
 function applyFilter(): void {
-  // 计算属性响应式生效，这里仅用于统一触发（保留按钮语义）
+  // 计算属性已响应式过滤，这里保留按钮语义
 }
 
 function resetFilter(): void {
-  fileSearch.value = '';
   folderFilter.value = '';
   typeFilter.value = 'all';
 }
@@ -367,6 +453,62 @@ function onTreeSelect(id: string | null): void {
   void loadFiles();
 }
 
+async function searchFolders(): Promise<void> {
+  const keyword = folderSearch.value.trim();
+  if (keyword.length === 0) {
+    folderHits.value = [];
+    return;
+  }
+
+  searching.value = true;
+  try {
+    const result = await api<{ items: FolderHit[] }>(
+      `/folders/search?q=${encodeURIComponent(keyword)}`,
+    );
+    folderHits.value = result.items;
+    if (result.items.length === 0) message.info('没有匹配的文件夹');
+  } catch (error) {
+    message.error(error instanceof ApiError ? error.message : '搜索失败');
+  } finally {
+    searching.value = false;
+  }
+}
+
+function clearFolderSearch(): void {
+  folderSearch.value = '';
+  folderHits.value = [];
+}
+
+function openHit(hit: FolderHit): void {
+  void router.push({
+    path: `/projects/${hit.projectId}/files`,
+    query: { folderId: hit.folderId },
+  });
+}
+
+function onTabChange(key: string | number): void {
+  const targetId = String(key);
+  if (targetId !== projectId) {
+    void router.push(`/projects/${targetId}/files`);
+  }
+}
+
+function onTabEdit(key: unknown, action: string): void {
+  if (action !== 'remove') return;
+  const removedId = String(key);
+  tabsStore.remove(removedId);
+  if (removedId !== projectId) return;
+
+  const next = tabsStore.tabs[0];
+  if (next) void router.push(`/projects/${next.projectId}/files`);
+  else void router.push('/projects');
+}
+
+function clearTabs(): void {
+  tabsStore.clear();
+  void router.push('/projects');
+}
+
 async function loadProject(): Promise<void> {
   try {
     const result = await api<{ items: ProjectSummary[] }>('/projects');
@@ -374,6 +516,14 @@ async function loadProject(): Promise<void> {
     projectName.value = found?.projectName ?? '';
   } catch {
     projectName.value = '';
+  }
+}
+
+async function loadCategories(): Promise<void> {
+  try {
+    categories.value = await api<CategoryItem[]>('/categories');
+  } catch {
+    categories.value = [];
   }
 }
 
@@ -409,16 +559,39 @@ function onUploadMenu({ key }: { key: string }): void {
 }
 
 function onCreateMenu({ key }: { key: string }): void {
-  if (key === 'folder') folderManagerVisible.value = true;
-  else void router.push('/projects');
+  if (key === 'folder') {
+    folderManagerVisible.value = true;
+    return;
+  }
+  projectForm.projectCode = '';
+  projectForm.projectName = '';
+  createProjectVisible.value = true;
 }
 
-function onTabEdit(key: unknown, action: string): void {
-  if (action === 'remove') void router.push('/projects');
-}
+async function createProject(): Promise<void> {
+  if (!projectForm.projectCode.trim() || !projectForm.projectName.trim()) {
+    message.warning('项目编码与名称不能为空');
+    return;
+  }
 
-function clearTab(): void {
-  void router.push('/projects');
+  creatingProject.value = true;
+  try {
+    const created = await api<{ projectId: string; projectName: string }>('/projects', {
+      method: 'POST',
+      body: JSON.stringify({
+        projectCode: projectForm.projectCode.trim(),
+        projectName: projectForm.projectName.trim(),
+      }),
+    });
+    tabsStore.add(created.projectId, created.projectName);
+    createProjectVisible.value = false;
+    message.success('项目已创建');
+    await router.push(`/projects/${created.projectId}/files`);
+  } catch (error) {
+    message.error(error instanceof ApiError ? error.message : '创建失败');
+  } finally {
+    creatingProject.value = false;
+  }
 }
 
 function pickFiles(): void {
@@ -582,7 +755,14 @@ function openPreview(file: FileItem): void {
 }
 
 onMounted(async () => {
+  const queryFolderId = route.query.folderId;
+  if (typeof queryFolderId === 'string' && queryFolderId.length > 0) {
+    folderId.value = queryFolderId;
+  }
+
   await loadProject();
+  tabsStore.add(projectId, projectName.value || '项目资料');
+  await loadCategories();
   await loadAll();
 });
 </script>
@@ -590,7 +770,7 @@ onMounted(async () => {
 <style scoped>
 .files-layout {
   display: grid;
-  grid-template-columns: 260px minmax(0, 1fr);
+  grid-template-columns: 280px minmax(0, 1fr);
   gap: 20px;
   align-items: start;
 }
@@ -606,6 +786,49 @@ onMounted(async () => {
   display: flex;
   gap: 8px;
   margin-bottom: 14px;
+}
+
+.hit-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 520px;
+  overflow: auto;
+}
+
+.hit-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--vd-text-secondary);
+  font-size: 12px;
+}
+
+.hit-item {
+  padding: 10px 12px;
+  border: 1px solid var(--vd-border);
+  border-radius: 10px;
+  cursor: pointer;
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease;
+}
+
+.hit-item:hover {
+  border-color: #bcd8fb;
+  background: #f5f9ff;
+}
+
+.hit-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.hit-path {
+  margin-top: 2px;
+  color: var(--vd-text-secondary);
+  font-size: 12px;
+  word-break: break-all;
 }
 
 .files-main {

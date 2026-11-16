@@ -164,6 +164,22 @@ export interface paths {
         patch: operations["updateCategory"];
         trace?: never;
     };
+    "/folders/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["searchFolders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/folders": {
         parameters: {
             query?: never;
@@ -667,6 +683,15 @@ export interface components {
             parentId?: string | null;
             folderName: string;
             depth?: number;
+        };
+        FolderSearchHit: {
+            /** Format: uuid */
+            folderId: string;
+            folderName: string;
+            /** Format: uuid */
+            projectId: string;
+            projectName: string;
+            path: string;
         };
         CreateFolderRequest: {
             /** Format: uuid */
@@ -1328,6 +1353,31 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
+        };
+    };
+    searchFolders: {
+        parameters: {
+            query: {
+                q: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 文件夹搜索结果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["FolderSearchHit"][];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
         };
     };
     listFolders: {

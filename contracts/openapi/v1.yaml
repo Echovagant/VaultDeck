@@ -238,6 +238,25 @@ paths:
         '204': { description: 已删除 }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /folders/search:
+    get:
+      tags: [folders]
+      operationId: searchFolders
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string, minLength: 1 } }
+      responses:
+        '200':
+          description: 文件夹搜索结果
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/FolderSearchHit' }
+        '400': { $ref: '#/components/responses/BadRequest' }
   /folders:
     get:
       tags: [folders]
@@ -966,6 +985,15 @@ components:
           format: uuid
         folderName: { type: string }
         depth: { type: integer, minimum: 0 }
+    FolderSearchHit:
+      type: object
+      required: [folderId, folderName, projectId, projectName, path]
+      properties:
+        folderId: { type: string, format: uuid }
+        folderName: { type: string }
+        projectId: { type: string, format: uuid }
+        projectName: { type: string }
+        path: { type: string }
     CreateFolderRequest:
       type: object
       required: [projectId, folderName]
