@@ -35,6 +35,8 @@ export interface MemoryFile {
   sizeBytes: number;
   contentType: string;
   uploaderId: string;
+  sha256: string;
+  objectPath: string;
   createdAt: string;
 }
 
@@ -98,6 +100,32 @@ class MemoryStore {
     return folder;
   }
 
+  addFile(input: {
+    projectId: string;
+    folderId: string;
+    fileName: string;
+    sizeBytes: number;
+    contentType: string;
+    uploaderId: string;
+    sha256: string;
+    objectPath: string;
+  }): MemoryFile {
+    const file: MemoryFile = {
+      fileId: randomUUID(),
+      projectId: input.projectId,
+      folderId: input.folderId,
+      fileName: input.fileName,
+      sizeBytes: input.sizeBytes,
+      contentType: input.contentType,
+      uploaderId: input.uploaderId,
+      sha256: input.sha256,
+      objectPath: input.objectPath,
+      createdAt: new Date().toISOString(),
+    };
+    this.files.set(file.fileId, file);
+    return file;
+  }
+
   private seed(): void {
     const leader: MemoryUser = {
       userId: randomUUID(),
@@ -129,6 +157,8 @@ class MemoryStore {
         sizeBytes: sample.sizeBytes,
         contentType: sample.contentType,
         uploaderId: leader.userId,
+        sha256: '',
+        objectPath: '',
         createdAt: new Date().toISOString(),
       };
       this.files.set(file.fileId, file);

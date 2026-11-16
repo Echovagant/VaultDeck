@@ -19,6 +19,13 @@ async function bootstrap(): Promise<void> {
   app.enableShutdownHooks();
 
   const fastify = app.getHttpAdapter().getInstance() as FastifyInstance;
+  fastify.addContentTypeParser(
+    'application/octet-stream',
+    { parseAs: 'buffer' },
+    (_request, body, done) => {
+      done(null, body);
+    },
+  );
   fastify.addHook('onRequest', (request, reply, done) => {
     const requestId = ensureRequestId(request as RequestWithId);
     void reply.header('x-request-id', requestId);

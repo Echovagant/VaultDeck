@@ -5,6 +5,7 @@ import { FilesController } from './interfaces/http/controllers/files.controller'
 import { FoldersController } from './interfaces/http/controllers/folders.controller';
 import { HealthController } from './interfaces/http/health.controller';
 import { ProjectsController } from './interfaces/http/controllers/projects.controller';
+import { UploadController } from './interfaces/http/controllers/upload.controller';
 
 @Module({
   controllers: [
@@ -13,6 +14,7 @@ import { ProjectsController } from './interfaces/http/controllers/projects.contr
     ProjectsController,
     FoldersController,
     FilesController,
+    UploadController,
   ],
 })
 export class AppModule {}
