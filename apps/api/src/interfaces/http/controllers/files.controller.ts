@@ -4,6 +4,7 @@ import type { FastifyReply } from 'fastify';
 import { store } from '../../../infrastructure/store';
 import { objectStorage } from '../../../infrastructure/memory/upload-sessions';
 import { DomainError } from '../errors/problem-details';
+import { toPublicFile } from '../presenters/file.presenter';
 import { requireUser } from './auth.controller';
 
 @Controller('files')
@@ -27,7 +28,7 @@ export class FilesController {
     for (const file of files) {
       if (folderId && file.folderId !== folderId) continue;
       if (!(await store.canReadFile(user, file))) continue;
-      items.push(file);
+      items.push(toPublicFile(file));
     }
     items.sort((left, right) => right.createdAt.localeCompare(left.createdAt));
 

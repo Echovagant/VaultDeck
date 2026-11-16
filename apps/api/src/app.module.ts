@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 
 import { AuthController } from './interfaces/http/controllers/auth.controller';
 import { AuditController } from './interfaces/http/controllers/audit.controller';
+import { BundlesController } from './interfaces/http/controllers/bundles.controller';
 import { FilesController } from './interfaces/http/controllers/files.controller';
 import { FoldersController } from './interfaces/http/controllers/folders.controller';
 import { HealthController } from './interfaces/http/health.controller';
@@ -21,6 +22,7 @@ import { UploadController } from './interfaces/http/controllers/upload.controlle
     TrashController,
     AuditController,
     SearchController,
+    BundlesController,
   ],
 })
 export class AppModule {}

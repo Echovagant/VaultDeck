@@ -18,6 +18,9 @@
       <el-button type="primary" :disabled="folders.length === 0" @click="pickFiles"
         >上传文件</el-button
       >
+      <el-button type="success" :disabled="selectedFiles.length === 0" @click="bundleDownload">
+        打包下载
+      </el-button>
       <el-button @click="loadAll">刷新</el-button>
       <input ref="fileInput" type="file" multiple hidden @change="onFilesPicked" />
     </div>
@@ -34,7 +37,8 @@
       <p class="phase">{{ currentFileName }} · {{ phase }}</p>
     </div>
 
-    <el-table v-loading="loading" :data="files">
+    <el-table v-loading="loading" :data="files" @selection-change="onSelectionChange">
+      <el-table-column type="selection" width="46" />
       <el-table-column prop="fileName" label="文件名" />
       <el-table-column label="大小" width="120">
         <template #default="scope">{{ formatBytes(scope.row.sizeBytes) }}</template>
@@ -87,6 +91,35 @@ const loading = ref(false);
 
 const previewVisible = ref(false);
 const previewFile = ref<FileItem | null>(null);
+const selectedFiles = ref<FileItem[]>([]);
+
+function onSelectionChange(rows: FileItem[]): void {
+  selectedFiles.value = rows;
+}
+
+async function bundleDownload(): Promise<void> {
+  if (selectedFiles.value.length === 0) return;
+  try {
+    const result = await api<{ bundleId: string }>('/bundles', {
+      method: 'POST',
+      body: JSON.stringify({ fileIds: selectedFiles.value.map((file) => file.fileId) }),
+    });
+    const token = getToken();
+    const response = await fetch(`/api/v1/bundles/${result.bundleId}/content`, {
+      headers: token ? { authorization: `Bearer ${token}` } : undefined,
+    });
+    if (!response.ok) throw new Error('打包下载失败');
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'vaultdeck-bundle.zip';
+    anchor.click();
+    URL.revokeObjectURL(url);
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '打包下载失败');
+  }
+}
 
 function openPreview(file: FileItem): void {
   previewFile.value = file;

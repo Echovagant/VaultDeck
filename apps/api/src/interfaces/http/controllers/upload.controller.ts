@@ -10,6 +10,7 @@ import {
   uploadSessions,
 } from '../../../infrastructure/memory/upload-sessions';
 import { DomainError } from '../errors/problem-details';
+import { toPublicFile } from '../presenters/file.presenter';
 import { StrictBodyPipe } from '../validation/strict-body.pipe';
 import { requireUser } from './auth.controller';
 
@@ -219,6 +220,6 @@ export class UploadController {
     await objectStorage.cleanupSession(sessionId);
     uploadSessions.delete(sessionId);
 
-    return file;
+    return toPublicFile(file);
   }
 }
