@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { createReadStream, createWriteStream } from 'node:fs';
-import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, rmdir, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import { ChecksumMismatch, StorageUnavailable } from '../../domain/errors';
@@ -69,6 +69,14 @@ export class LocalObjectStorage {
     } catch {
       return false;
     }
+  }
+
+  /** 删除存储对象文件；对象按 sha 前两位分桶，删空后顺带移除空目录 */
+  async deleteObject(objectPath: string): Promise<void> {
+    await rm(objectPath, { force: true });
+    await rmdir(path.dirname(objectPath)).catch(() => {
+      // 目录非空或不存在均忽略
+    });
   }
 
   openRange(objectPath: string, start: number, end: number): NodeJS.ReadableStream {

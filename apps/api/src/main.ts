@@ -9,7 +9,8 @@ import { configureComposition } from './composition/root';
 import { ProblemDetailsFilter } from './interfaces/http/errors/problem-details.filter';
 import { DomainError, toProblem } from './interfaces/http/errors/problem-details';
 import { ensureRequestId, type RequestWithId } from './interfaces/http/request-context';
-import { prepareStore, storeKind } from './infrastructure/store';
+import { startMaintenanceScheduler } from './infrastructure/scheduler/maintenance';
+import { prepareStore, store, storeKind } from './infrastructure/store';
 
 async function bootstrap(): Promise<void> {
   const adapter = new FastifyAdapter({ trustProxy: false, bodyLimit: 16 * 1024 * 1024 });
@@ -56,6 +57,7 @@ async function bootstrap(): Promise<void> {
   configureComposition(app);
 
   await prepareStore();
+  startMaintenanceScheduler(store);
 
   const port = Number(process.env['PORT'] ?? 3000);
   const host = process.env['HOST'] ?? '127.0.0.1';

@@ -159,6 +159,12 @@ export interface UpdateUserInput {
   password?: string;
 }
 
+export interface PurgeOutcome {
+  purgedFiles: number;
+  /** ref_count 归零后删除的存储对象 rel_path，磁盘删除由调用方执行 */
+  reclaimedObjectPaths: string[];
+}
+
 export interface StorePort {
   login(username: string, password: string): Promise<StoreLoginResult | null>;
   logout(token: string): Promise<void>;
@@ -210,7 +216,7 @@ export interface StorePort {
   addFile(input: AddFileInput): Promise<StoreFile>;
   trashFile(user: StoreUser, file: StoreFile): Promise<StoreFile>;
   restoreFile(user: StoreUser, file: StoreFile): Promise<StoreFile>;
-  purgeFile(user: StoreUser, file: StoreFile): Promise<void>;
+  purgeFile(user: StoreUser, file: StoreFile): Promise<PurgeOutcome>;
   listTrash(user: StoreUser): Promise<StoreFile[]>;
-  purgeExpired(): Promise<void>;
+  purgeExpired(): Promise<PurgeOutcome>;
 }

@@ -1,6 +1,6 @@
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 
-import { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 
 import type {
   AddFileInput,
@@ -9,6 +9,7 @@ import type {
   CreateFolderInput,
   CreateProjectInput,
   CreateUserInput,
+  PurgeOutcome,
   RecordAuditInput,
   StoreAuditEntry,
   StoreCategory,
@@ -731,16 +732,65 @@ export class PgStore implements StorePort {
     return updated;
   }
 
-  async purgeFile(user: StoreUser, file: StoreFile): Promise<void> {
-    await this.pool.query('DELETE FROM file WHERE file_id = $1', [file.fileId]);
-    await this.recordAudit({
-      actor: user,
-      action: 'file.purge',
-      objectType: 'file',
-      objectId: file.fileId,
-      result: 'success',
-      detail: file.fileName,
-    });
+  /** 按 file 删除次数递减 ref_count，归零即删除对象行；返回被回收对象的 rel_path（磁盘删除由调用方执行） */
+  private async decrementObjects(
+    client: PoolClient,
+    objectIds: Array<string | null>,
+  ): Promise<string[]> {
+    const counts = new Map<string, number>();
+    for (const objectId of objectIds) {
+      if (objectId === null) continue;
+      counts.set(objectId, (counts.get(objectId) ?? 0) + 1);
+    }
+    if (counts.size === 0) return [];
+
+    const zeroIds: string[] = [];
+    for (const [objectId, delta] of counts) {
+      const dec = await client.query<{ object_id: string; ref_count: number }>(
+        'UPDATE stored_object SET ref_count = ref_count - $2 WHERE object_id = $1 RETURNING object_id, ref_count',
+        [objectId, delta],
+      );
+      const row = dec.rows[0];
+      if (row && row.ref_count <= 0) zeroIds.push(row.object_id);
+    }
+    if (zeroIds.length === 0) return [];
+
+    const deleted = await client.query<{ rel_path: string }>(
+      'DELETE FROM stored_object WHERE object_id = ANY($1::text[]) RETURNING rel_path',
+      [zeroIds],
+    );
+    return deleted.rows.map((row) => row.rel_path);
+  }
+
+  async purgeFile(user: StoreUser, file: StoreFile): Promise<PurgeOutcome> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const gone = await client.query<{ object_id: string | null }>(
+        'DELETE FROM file WHERE file_id = $1 RETURNING object_id',
+        [file.fileId],
+      );
+      const reclaimed = await this.decrementObjects(client, [gone.rows[0]?.object_id ?? null]);
+      await client.query('COMMIT');
+      const outcome: PurgeOutcome = {
+        purgedFiles: (gone.rowCount ?? 0) > 0 ? 1 : 0,
+        reclaimedObjectPaths: reclaimed,
+      };
+      await this.recordAudit({
+        actor: user,
+        action: 'file.purge',
+        objectType: 'file',
+        objectId: file.fileId,
+        result: 'success',
+        detail: file.fileName,
+      });
+      return outcome;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async listTrash(user: StoreUser): Promise<StoreFile[]> {
@@ -756,17 +806,36 @@ export class PgStore implements StorePort {
     return visible;
   }
 
-  async purgeExpired(): Promise<void> {
-    const result = await this.pool.query<{ file_id: string; file_name: string }>(
-      `DELETE FROM file WHERE status = 'trashed' AND expire_at <= now()
-       RETURNING file_id, file_name`,
-    );
-    for (const row of result.rows) {
-      await this.pool.query(
-        `INSERT INTO audit_log (actor_name, action, object_type, object_id, result, detail)
-         VALUES ('system', 'file.purge_expired', 'file', $1, 'success', $2)`,
-        [row.file_id, row.file_name],
+  async purgeExpired(): Promise<PurgeOutcome> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const gone = await client.query<{
+        file_id: string;
+        file_name: string;
+        object_id: string | null;
+      }>(
+        `DELETE FROM file WHERE status = 'trashed' AND expire_at <= now()
+         RETURNING file_id, file_name, object_id`,
       );
+      const reclaimed = await this.decrementObjects(
+        client,
+        gone.rows.map((row) => row.object_id),
+      );
+      for (const row of gone.rows) {
+        await client.query(
+          `INSERT INTO audit_log (actor_name, action, object_type, object_id, result, detail)
+           VALUES ('system', 'file.purge_expired', 'file', $1, 'success', $2)`,
+          [row.file_id, row.file_name],
+        );
+      }
+      await client.query('COMMIT');
+      return { purgedFiles: gone.rows.length, reclaimedObjectPaths: reclaimed };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
     }
   }
 }

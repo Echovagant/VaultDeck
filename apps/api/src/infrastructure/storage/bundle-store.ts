@@ -53,11 +53,14 @@ export async function buildBundle(input: {
   return record;
 }
 
-export async function purgeOldBundles(maxAgeMs = 24 * 60 * 60 * 1000): Promise<void> {
+export async function purgeOldBundles(maxAgeMs = 24 * 60 * 60 * 1000): Promise<number> {
   const now = Date.now();
+  let purged = 0;
   for (const [bundleId, record] of bundles) {
     if (now - new Date(record.createdAt).getTime() <= maxAgeMs) continue;
     bundles.delete(bundleId);
     await rm(record.zipPath, { force: true });
+    purged += 1;
   }
+  return purged;
 }

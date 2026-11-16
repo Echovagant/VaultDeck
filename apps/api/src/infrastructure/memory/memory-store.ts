@@ -7,6 +7,7 @@ import type {
   CreateFolderInput,
   CreateProjectInput,
   CreateUserInput,
+  PurgeOutcome,
   RecordAuditInput,
   StoreAuditEntry,
   StoreCategory,
@@ -404,7 +405,7 @@ class MemoryStore implements StorePort {
     return file;
   }
 
-  async purgeFile(user: StoreUser, file: StoreFile): Promise<void> {
+  async purgeFile(user: StoreUser, file: StoreFile): Promise<PurgeOutcome> {
     this.files.delete(file.fileId);
     await this.recordAudit({
       actor: user,
@@ -414,6 +415,8 @@ class MemoryStore implements StorePort {
       result: 'success',
       detail: file.fileName,
     });
+    // 内存模式无对象登记表，不做磁盘回收（对象回收语义仅 postgres 实现承担）
+    return { purgedFiles: 1, reclaimedObjectPaths: [] };
   }
 
   async listTrash(user: StoreUser): Promise<StoreFile[]> {
@@ -428,12 +431,14 @@ class MemoryStore implements StorePort {
     );
   }
 
-  async purgeExpired(): Promise<void> {
+  async purgeExpired(): Promise<PurgeOutcome> {
     const now = Date.now();
+    let purged = 0;
     for (const file of [...this.files.values()]) {
       if (file.status !== 'trashed' || !file.expireAt) continue;
       if (new Date(file.expireAt).getTime() <= now) {
         this.files.delete(file.fileId);
+        purged += 1;
         this.audits.push({
           auditId: randomUUID(),
           actorId: 'system',
@@ -447,6 +452,7 @@ class MemoryStore implements StorePort {
         });
       }
     }
+    return { purgedFiles: purged, reclaimedObjectPaths: [] };
   }
 
   private seedCategories(): void {

@@ -1,5 +1,6 @@
 import { Controller, Delete, Get, Headers, Param, Post } from '@nestjs/common';
 
+import { objectStorage } from '../../../infrastructure/memory/upload-sessions';
 import { TRASH_RETENTION_DAYS, store } from '../../../infrastructure/store';
 import { DomainError } from '../errors/problem-details';
 import { requireUser } from './auth.controller';
@@ -51,7 +52,12 @@ export class TrashController {
     if (!file || file.status !== 'trashed' || !(await store.canManageTrashedFile(user, file))) {
       throw new DomainError('AUTH', 'VD-AUTH-404', '回收站条目不存在', { status: 404 });
     }
-    await store.purgeFile(user, file);
+    const outcome = await store.purgeFile(user, file);
+    for (const objectPath of outcome.reclaimedObjectPaths) {
+      await objectStorage.deleteObject(objectPath).catch(() => {
+        // 磁盘残留由对象巡检兜底（遗留项 B7）
+      });
+    }
     return { ok: true };
   }
 }
