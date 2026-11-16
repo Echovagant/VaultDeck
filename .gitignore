@@ -19,16 +19,16 @@ secrets/
 *.pfx
 *.jks
 
-# ---- 运行时数据与资料 ----
-data/
-uploads/
-storage/
-chunks/
-trash/
-backups/
-releases/
-runtime/
-tools/
+# ---- 运行时数据与资料（仅仓库根，避免吞掉同名源码目录） ----
+/data/
+/uploads/
+/storage/
+/chunks/
+/trash/
+/backups/
+/releases/
+/runtime/
+/tools/
 *.db
 *.sqlite
 *.sqlite3
@@ -44,7 +44,7 @@ out/
 target/
 .venv/
 venv/
-env/
+/env/
 __pycache__/
 *.py[cod]
 *.egg-info/
