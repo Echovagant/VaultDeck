@@ -8,6 +8,7 @@ import { FoldersController } from './interfaces/http/controllers/folders.control
 import { HealthController } from './interfaces/http/health.controller';
 import { ProjectsController } from './interfaces/http/controllers/projects.controller';
 import { SearchController } from './interfaces/http/controllers/search.controller';
+import { StatsController } from './interfaces/http/controllers/stats.controller';
 import { TrashController } from './interfaces/http/controllers/trash.controller';
 import { UploadController } from './interfaces/http/controllers/upload.controller';
 
@@ -23,6 +24,7 @@ import { UploadController } from './interfaces/http/controllers/upload.controlle
     AuditController,
     SearchController,
     BundlesController,
+    StatsController,
   ],
 })
 export class AppModule {}

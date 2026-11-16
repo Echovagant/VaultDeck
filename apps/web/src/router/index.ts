@@ -28,6 +28,11 @@ const routes = [
     component: () => import('@/pages/search/index.vue'),
   },
   {
+    path: '/stats',
+    name: 'stats',
+    component: () => import('@/pages/stats/index.vue'),
+  },
+  {
     path: '/trash',
     name: 'trash',
     component: () => import('@/pages/trash/index.vue'),
