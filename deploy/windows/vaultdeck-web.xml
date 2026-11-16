@@ -1,0 +1,13 @@
+<service>
+  <id>vaultdeck-web</id>
+  <name>VaultDeck Web</name>
+  <description>VaultDeck Nginx reverse proxy and static assets</description>
+  <executable>%VAULTDECK_HOME%\tools\nginx\nginx.exe</executable>
+  <arguments>-c conf\nginx.conf</arguments>
+  <workingdirectory>%VAULTDECK_HOME%\tools\nginx</workingdirectory>
+  <logpath>%VAULTDECK_HOME%\logs</logpath>
+  <log mode="roll-by-size">
+    <sizeThreshold>10485760</sizeThreshold>
+    <keepFiles>8</keepFiles>
+  </log>
+</service>

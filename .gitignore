@@ -25,6 +25,9 @@ storage/
 chunks/
 trash/
 backups/
+releases/
+runtime/
+tools/
 *.db
 *.sqlite
 *.sqlite3
