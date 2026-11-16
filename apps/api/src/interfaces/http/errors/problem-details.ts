@@ -73,7 +73,7 @@ export function resolveStatus(error: DomainError): number {
 export function toProblem(error: DomainError, requestId: string): ProblemDetails {
   const status = resolveStatus(error);
   const problem: ProblemDetails = {
-    type: `https://vaultdeck.local/problems/${error.code.toLowerCase()}`,
+    type: `urn:vaultdeck:problem:${error.code.toLowerCase()}`,
     title: error.options.title ?? STATUS_TITLES[status] ?? 'Error',
     status,
     detail: error.message,

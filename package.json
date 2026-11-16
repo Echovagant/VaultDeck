@@ -15,6 +15,8 @@
     "contract:lint": "spectral lint contracts/openapi/v1.yaml --ruleset .spectral.json",
     "contract:gen": "openapi-typescript contracts/openapi/v1.yaml -o packages/shared/src/generated/api.ts",
     "contract:check": "node scripts/contracts-check.mjs",
+    "check:sanitize": "node scripts/check-sanitization.mjs",
+    "db:migrate": "tsx apps/api/src/infrastructure/db/migrate-cli.ts",
     "typecheck": "npm run typecheck --workspace @vaultdeck/api && npm run typecheck --workspace @vaultdeck/web && npm run typecheck --workspace @vaultdeck/shared"
   },
   "devDependencies": {
