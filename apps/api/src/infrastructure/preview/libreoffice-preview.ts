@@ -15,6 +15,8 @@ export interface LibreOfficeOptions {
 }
 
 export class LibreOfficePreview {
+  private queue: Promise<unknown> = Promise.resolve();
+
   constructor(private readonly options: LibreOfficeOptions) {}
 
   capabilities(): { supported: boolean; formats: string[] } {
@@ -22,11 +24,16 @@ export class LibreOfficePreview {
   }
 
   supports(fileName: string): boolean {
-    const extension = fileExtension(fileName);
-    return OFFICE_EXTENSIONS.includes(extension);
+    return OFFICE_EXTENSIONS.includes(fileExtension(fileName));
   }
 
   async convertToPdf(input: { fileId: string; objectPath: string }): Promise<string> {
+    const task = this.queue.then(() => this.runConversion(input));
+    this.queue = task.catch(() => undefined);
+    return task;
+  }
+
+  private async runConversion(input: { fileId: string; objectPath: string }): Promise<string> {
     if (!this.options.sofficePath) {
       throw new PreviewUnavailable('未配置 LibreOffice，Office 预览不可用');
     }
@@ -39,10 +46,12 @@ export class LibreOfficePreview {
       // 未缓存，继续转换
     }
 
-    const workDir = path.join(this.options.cacheDir, input.fileId);
+    const workDir = path.join(this.options.cacheDir, 'work', input.fileId);
+    const profileDir = path.join(this.options.cacheDir, 'profile');
     await mkdir(workDir, { recursive: true });
+    await mkdir(profileDir, { recursive: true });
 
-    const profilePath = path.join(workDir, 'profile').replace(/\\/g, '/');
+    const profilePath = profileDir.replace(/\\/g, '/');
     const args = [
       '--headless',
       '--norestore',

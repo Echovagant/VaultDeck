@@ -11,6 +11,7 @@ import { SearchController } from './interfaces/http/controllers/search.controlle
 import { StatsController } from './interfaces/http/controllers/stats.controller';
 import { TrashController } from './interfaces/http/controllers/trash.controller';
 import { UploadController } from './interfaces/http/controllers/upload.controller';
+import { UsersController } from './interfaces/http/controllers/users.controller';
 
 @Module({
   controllers: [
@@ -25,6 +26,7 @@ import { UploadController } from './interfaces/http/controllers/upload.controlle
     SearchController,
     BundlesController,
     StatsController,
+    UsersController,
   ],
 })
 export class AppModule {}

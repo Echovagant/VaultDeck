@@ -5,6 +5,7 @@ import type {
   AddMemberInput,
   CreateFolderInput,
   CreateProjectInput,
+  CreateUserInput,
   RecordAuditInput,
   StoreAuditEntry,
   StoreFile,
@@ -14,6 +15,7 @@ import type {
   StorePort,
   StoreProject,
   StoreUser,
+  UpdateUserInput,
 } from '../../application/ports/store.port';
 
 export const TRASH_RETENTION_DAYS = Number(process.env['VD_TRASH_RETENTION_DAYS'] ?? 10);
@@ -74,6 +76,35 @@ class MemoryStore implements StorePort {
   async getUser(userId: string): Promise<StoreUser | null> {
     const record = this.users.get(userId);
     return record ? this.toStoreUser(record) : null;
+  }
+
+  async createUser(input: CreateUserInput): Promise<StoreUser> {
+    const duplicated = [...this.users.values()].some(
+      (record) => record.username.toLowerCase() === input.username.toLowerCase(),
+    );
+    if (duplicated) throw new Error('USERNAME_TAKEN');
+
+    const record: UserRecord = {
+      userId: randomUUID(),
+      username: input.username,
+      password: input.password,
+      displayName: input.displayName,
+      role: input.role,
+      status: 'active',
+    };
+    this.users.set(record.userId, record);
+    return this.toStoreUser(record);
+  }
+
+  async updateUser(input: UpdateUserInput): Promise<StoreUser> {
+    const record = this.users.get(input.userId);
+    if (!record) throw new Error('USER_NOT_FOUND');
+
+    if (input.displayName !== undefined) record.displayName = input.displayName;
+    if (input.role !== undefined) record.role = input.role;
+    if (input.status !== undefined) record.status = input.status;
+    if (input.password !== undefined) record.password = input.password;
+    return this.toStoreUser(record);
   }
 
   async memberProjectIds(userId: string): Promise<string[]> {
@@ -299,9 +330,9 @@ class MemoryStore implements StorePort {
   }
 
   private seed(): void {
-    const leader = this.createUser('leader', 'leader123', '领队', 'LEADER');
-    const deputy = this.createUser('deputy', 'deputy123', '执行领队', 'DEPUTY_LEADER');
-    const member = this.createUser('member', 'member123', '队员', 'MEMBER');
+    const leader = this.seedUser('leader', 'leader123', '领队', 'LEADER');
+    const deputy = this.seedUser('deputy', 'deputy123', '执行领队', 'DEPUTY_LEADER');
+    const member = this.seedUser('member', 'member123', '队员', 'MEMBER');
 
     const project = this.createProjectSync({ projectCode: 'DEMO-001', projectName: '示例项目' });
     const privateProject = this.createProjectSync({
@@ -357,7 +388,7 @@ class MemoryStore implements StorePort {
     });
   }
 
-  private createUser(
+  private seedUser(
     username: string,
     password: string,
     displayName: string,

@@ -7,6 +7,7 @@ import type {
   AddMemberInput,
   CreateFolderInput,
   CreateProjectInput,
+  CreateUserInput,
   RecordAuditInput,
   StoreAuditEntry,
   StoreFile,
@@ -16,6 +17,7 @@ import type {
   StorePort,
   StoreProject,
   StoreUser,
+  UpdateUserInput,
 } from '../../application/ports/store.port';
 
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
@@ -153,6 +155,54 @@ export class PgStore implements StorePort {
     ]);
     const row = result.rows[0];
     return row ? mapUser(row) : null;
+  }
+
+  async createUser(input: CreateUserInput): Promise<StoreUser> {
+    const result = await this.pool.query<UserRow>(
+      `INSERT INTO app_user (username, display_name, role_code, password_hash)
+       VALUES ($1, $2, $3, $4) RETURNING *`,
+      [input.username, input.displayName, input.role, hashPassword(input.password)],
+    );
+    const row = result.rows[0];
+    if (!row) throw new Error('USER_CREATE_FAILED');
+    return mapUser(row);
+  }
+
+  async updateUser(input: UpdateUserInput): Promise<StoreUser> {
+    const sets: string[] = [];
+    const params: unknown[] = [];
+
+    if (input.displayName !== undefined) {
+      params.push(input.displayName);
+      sets.push(`display_name = $${params.length}`);
+    }
+    if (input.role !== undefined) {
+      params.push(input.role);
+      sets.push(`role_code = $${params.length}`);
+    }
+    if (input.status !== undefined) {
+      params.push(input.status);
+      sets.push(`status = $${params.length}`);
+    }
+    if (input.password !== undefined) {
+      params.push(hashPassword(input.password));
+      sets.push(`password_hash = $${params.length}`);
+    }
+
+    if (sets.length === 0) {
+      const current = await this.getUser(input.userId);
+      if (!current) throw new Error('USER_NOT_FOUND');
+      return current;
+    }
+
+    params.push(input.userId);
+    const result = await this.pool.query<UserRow>(
+      `UPDATE app_user SET ${sets.join(', ')} WHERE user_id = $${params.length} RETURNING *`,
+      params,
+    );
+    const row = result.rows[0];
+    if (!row) throw new Error('USER_NOT_FOUND');
+    return mapUser(row);
   }
 
   async memberProjectIds(userId: string): Promise<string[]> {

@@ -104,6 +104,21 @@ export interface RecordAuditInput {
   detail: string;
 }
 
+export interface CreateUserInput {
+  username: string;
+  displayName: string;
+  role: RoleCode;
+  password: string;
+}
+
+export interface UpdateUserInput {
+  userId: string;
+  displayName?: string;
+  role?: RoleCode;
+  status?: 'active' | 'disabled';
+  password?: string;
+}
+
 export interface StorePort {
   login(username: string, password: string): Promise<StoreLoginResult | null>;
   logout(token: string): Promise<void>;
@@ -111,6 +126,8 @@ export interface StorePort {
 
   listUsers(): Promise<StoreUser[]>;
   getUser(userId: string): Promise<StoreUser | null>;
+  createUser(input: CreateUserInput): Promise<StoreUser>;
+  updateUser(input: UpdateUserInput): Promise<StoreUser>;
 
   memberProjectIds(userId: string): Promise<string[]>;
   visibleProjectIds(user: StoreUser): Promise<string[] | null>;
