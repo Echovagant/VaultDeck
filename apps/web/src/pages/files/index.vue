@@ -21,8 +21,10 @@
       <el-button type="success" :disabled="selectedFiles.length === 0" @click="bundleDownload">
         打包下载
       </el-button>
+      <el-button :disabled="folders.length === 0" @click="pickDirectory">导入目录</el-button>
       <el-button @click="loadAll">刷新</el-button>
       <input ref="fileInput" type="file" multiple hidden @change="onFilesPicked" />
+      <input ref="dirInput" type="file" webkitdirectory multiple hidden @change="onDirPicked" />
     </div>
 
     <el-alert
@@ -57,14 +59,46 @@
         </template>
       </el-table-column>
     </el-table>
-
     <FilePreviewDialog v-model="previewVisible" :file="previewFile" />
+
+    <el-dialog v-model="importVisible" title="导入结果" width="680px">
+      <p class="import-summary">
+        成功 {{ importSummary.success }} · 跳过 {{ importSummary.skipped }} · 失败
+        {{ importSummary.failed }}
+      </p>
+      <el-table :data="importResults" max-height="420">
+        <el-table-column prop="fileName" label="文件" />
+        <el-table-column prop="status" label="结果" width="90">
+          <template #default="scope">
+            <el-tag
+              :type="
+                scope.row.status === 'success'
+                  ? 'success'
+                  : scope.row.status === 'skipped'
+                    ? 'info'
+                    : 'danger'
+              "
+              size="small"
+            >
+              {{
+                scope.row.status === 'success'
+                  ? '成功'
+                  : scope.row.status === 'skipped'
+                    ? '跳过'
+                    : '失败'
+              }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="message" label="说明" />
+      </el-table>
+    </el-dialog>
   </section>
 </template>
 
 <script setup lang="ts">
 import { ElMessage } from 'element-plus';
-import { onMounted, ref } from 'vue';
+import { onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
 import {
@@ -77,6 +111,7 @@ import {
   type ProjectSummary,
 } from '@/api/client';
 import FilePreviewDialog from '@/features/preview/FilePreviewDialog.vue';
+import { importDirectory, type ImportResult } from '@/features/upload/directory-importer';
 import { uploadFile } from '@/features/upload/uploader';
 
 const route = useRoute();
@@ -169,6 +204,70 @@ async function loadFiles(): Promise<void> {
 async function loadAll(): Promise<void> {
   await loadFolders();
   await loadFiles();
+}
+
+const dirInput = ref<HTMLInputElement | null>(null);
+const importVisible = ref(false);
+const importResults = ref<ImportResult[]>([]);
+const importSummary = reactive({ success: 0, skipped: 0, failed: 0 });
+
+function pickDirectory(): void {
+  if (folders.value.length === 0) {
+    ElMessage.warning('请先创建文件夹');
+    return;
+  }
+  dirInput.value?.click();
+}
+
+async function onDirPicked(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement;
+  const picked = Array.from(input.files ?? []);
+  input.value = '';
+  if (picked.length === 0) return;
+
+  const targetFolder = folderId.value || folders.value[0]?.folderId;
+  if (!targetFolder) {
+    ElMessage.warning('请选择目标文件夹');
+    return;
+  }
+
+  uploading.value = true;
+  importResults.value = [];
+  importSummary.success = 0;
+  importSummary.skipped = 0;
+  importSummary.failed = 0;
+
+  try {
+    const results = await importDirectory({
+      files: picked,
+      projectId,
+      folderId: targetFolder,
+      concurrency: 2,
+      onProgress: (done, total, current) => {
+        percent.value = Math.round((done / total) * 100);
+        phase.value = `导入 ${done}/${total}`;
+        currentFileName.value = current;
+      },
+    });
+
+    importResults.value = results;
+    for (const item of results) {
+      if (item.status === 'success') importSummary.success += 1;
+      else if (item.status === 'skipped') importSummary.skipped += 1;
+      else importSummary.failed += 1;
+    }
+    importVisible.value = true;
+    if (importSummary.failed === 0) ElMessage.success('目录导入完成');
+    else ElMessage.warning(`导入完成，${importSummary.failed} 个文件失败`);
+    await loadFiles();
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '导入失败');
+  } finally {
+    uploading.value = false;
+    currentFileName.value = '';
+    phase.value = '';
+    percent.value = 0;
+  }
 }
 
 function pickFiles(): void {
