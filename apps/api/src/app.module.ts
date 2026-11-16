@@ -6,6 +6,7 @@ import { FilesController } from './interfaces/http/controllers/files.controller'
 import { FoldersController } from './interfaces/http/controllers/folders.controller';
 import { HealthController } from './interfaces/http/health.controller';
 import { ProjectsController } from './interfaces/http/controllers/projects.controller';
+import { SearchController } from './interfaces/http/controllers/search.controller';
 import { TrashController } from './interfaces/http/controllers/trash.controller';
 import { UploadController } from './interfaces/http/controllers/upload.controller';
 
@@ -19,6 +20,7 @@ import { UploadController } from './interfaces/http/controllers/upload.controlle
     UploadController,
     TrashController,
     AuditController,
+    SearchController,
   ],
 })
 export class AppModule {}

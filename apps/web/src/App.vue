@@ -14,6 +14,13 @@
         <el-menu-item v-if="session.user.role !== 'MEMBER'" index="/audit">操作日志</el-menu-item>
         <el-menu-item index="/admin">后台</el-menu-item>
       </el-menu>
+      <el-input
+        v-model="searchKeyword"
+        class="search-box"
+        placeholder="搜索文件名"
+        clearable
+        @keyup.enter="onSearch"
+      />
       <div class="app-user">
         <span>{{ session.user.displayName }}（{{ roleLabel }}）</span>
         <el-button link type="primary" @click="onLogout">退出</el-button>
@@ -26,7 +33,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
 import { useSessionStore } from '@/stores/session';
@@ -39,8 +46,18 @@ const activePath = computed(() => {
   if (route.path.startsWith('/admin')) return '/admin';
   if (route.path.startsWith('/trash')) return '/trash';
   if (route.path.startsWith('/audit')) return '/audit';
+  if (route.path.startsWith('/search')) return '/search';
   return '/projects';
 });
+
+const searchKeyword = ref('');
+
+function onSearch(): void {
+  const value = searchKeyword.value.trim();
+  if (value.length >= 2) {
+    void router.push({ path: '/search', query: { q: value } });
+  }
+}
 const roleLabel = computed(() => {
   const labels: Record<string, string> = {
     LEADER: '领队',

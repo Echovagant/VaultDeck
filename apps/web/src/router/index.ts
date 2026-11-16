@@ -23,6 +23,11 @@ const routes = [
     component: () => import('@/pages/files/index.vue'),
   },
   {
+    path: '/search',
+    name: 'search',
+    component: () => import('@/pages/search/index.vue'),
+  },
+  {
     path: '/trash',
     name: 'trash',
     component: () => import('@/pages/trash/index.vue'),
