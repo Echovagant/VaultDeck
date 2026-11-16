@@ -27,7 +27,6 @@ import type {
 } from '../../application/ports/store.port';
 
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
-const TRASH_RETENTION_DAYS = Number(process.env['VD_TRASH_RETENTION_DAYS'] ?? 10);
 
 function sha256Hex(value: string): string {
   return createHash('sha256').update(value).digest('hex');
