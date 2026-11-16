@@ -20,8 +20,9 @@
       <el-table-column label="上传时间" width="180">
         <template #default="scope">{{ new Date(scope.row.createdAt).toLocaleString() }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="140">
+      <el-table-column label="操作" width="210">
         <template #default="scope">
+          <el-button link type="primary" @click="openPreview(scope.row)">预览</el-button>
           <el-button link type="primary" @click="download(scope.row)">下载</el-button>
           <el-button link type="primary" @click="openProject(scope.row)">进入项目</el-button>
         </template>
@@ -32,6 +33,8 @@
     <p v-if="total > items.length" class="empty">
       共 {{ total }} 条，仅显示前 {{ items.length }} 条
     </p>
+
+    <FilePreviewDialog v-model="previewVisible" :file="previewFile" />
   </section>
 </template>
 
@@ -41,6 +44,7 @@ import { onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
 import { ApiError, api, formatBytes, getToken } from '@/api/client';
+import FilePreviewDialog from '@/features/preview/FilePreviewDialog.vue';
 
 interface SearchItem {
   fileId: string;
@@ -59,6 +63,13 @@ const items = ref<SearchItem[]>([]);
 const total = ref(0);
 const loading = ref(false);
 const searched = ref(false);
+const previewVisible = ref(false);
+const previewFile = ref<SearchItem | null>(null);
+
+function openPreview(item: SearchItem): void {
+  previewFile.value = item;
+  previewVisible.value = true;
+}
 
 async function search(): Promise<void> {
   const value = keyword.value.trim();

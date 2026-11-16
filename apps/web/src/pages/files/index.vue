@@ -45,13 +45,16 @@
           {{ new Date(scope.row.createdAt).toLocaleString() }}
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="150">
+      <el-table-column label="操作" width="210">
         <template #default="scope">
+          <el-button link type="primary" @click="openPreview(scope.row)">预览</el-button>
           <el-button link type="primary" @click="download(scope.row)">下载</el-button>
           <el-button link type="danger" @click="remove(scope.row)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>
+
+    <FilePreviewDialog v-model="previewVisible" :file="previewFile" />
   </section>
 </template>
 
@@ -69,6 +72,7 @@ import {
   type FolderItem,
   type ProjectSummary,
 } from '@/api/client';
+import FilePreviewDialog from '@/features/preview/FilePreviewDialog.vue';
 import { uploadFile } from '@/features/upload/uploader';
 
 const route = useRoute();
@@ -80,6 +84,14 @@ const folders = ref<FolderItem[]>([]);
 const files = ref<FileItem[]>([]);
 const folderId = ref<string>('');
 const loading = ref(false);
+
+const previewVisible = ref(false);
+const previewFile = ref<FileItem | null>(null);
+
+function openPreview(file: FileItem): void {
+  previewFile.value = file;
+  previewVisible.value = true;
+}
 
 const fileInput = ref<HTMLInputElement | null>(null);
 const uploading = ref(false);
