@@ -1,86 +1,79 @@
 <template>
   <section>
-    <div class="toolbar">
-      <h1>账号管理</h1>
-      <el-button type="primary" @click="openCreate">新建账号</el-button>
+    <div class="page-head">
+      <div>
+        <h1 class="vd-page-title">账号管理</h1>
+        <p class="vd-page-sub">创建账号、调整角色、停用账号</p>
+      </div>
+      <a-button type="primary" @click="openCreate">新建账号</a-button>
     </div>
 
-    <el-table v-loading="loading" :data="users">
-      <el-table-column prop="username" label="用户名" width="170" />
-      <el-table-column prop="displayName" label="显示名" />
-      <el-table-column label="角色" width="170">
-        <template #default="scope">
-          <el-select
-            :model-value="scope.row.role"
+    <a-table
+      :columns="columns"
+      :data-source="users"
+      :loading="loading"
+      :pagination="false"
+      row-key="userId"
+    >
+      <template #bodyCell="{ column, record }">
+        <template v-if="column.key === 'role'">
+          <a-select
+            :value="record.role"
             size="small"
-            :disabled="scope.row.userId === session.user?.userId"
-            @change="(value: string) => changeRole(scope.row, value)"
-          >
-            <el-option label="领队" value="LEADER" />
-            <el-option label="执行领队" value="DEPUTY_LEADER" />
-            <el-option label="队员" value="MEMBER" />
-          </el-select>
+            style="width: 140px"
+            :disabled="record.userId === session.user?.userId"
+            :options="roleOptions"
+            @change="(value: string) => changeRole(record, value)"
+          />
         </template>
-      </el-table-column>
-      <el-table-column label="状态" width="110">
-        <template #default="scope">
-          <el-tag :type="scope.row.status === 'active' ? 'success' : 'info'">
-            {{ scope.row.status === 'active' ? '启用' : '停用' }}
-          </el-tag>
+        <template v-else-if="column.key === 'status'">
+          <a-tag :color="record.status === 'active' ? 'success' : 'default'">
+            {{ record.status === 'active' ? '启用' : '停用' }}
+          </a-tag>
         </template>
-      </el-table-column>
-      <el-table-column label="操作" width="150">
-        <template #default="scope">
-          <el-button
-            v-if="scope.row.status === 'active'"
-            link
-            type="danger"
-            :disabled="scope.row.userId === session.user?.userId"
-            @click="toggle(scope.row, 'disabled')"
+        <template v-else-if="column.key === 'actions'">
+          <a-button
+            v-if="record.status === 'active'"
+            type="link"
+            danger
+            :disabled="record.userId === session.user?.userId"
+            @click="toggle(record, 'disabled')"
           >
             停用
-          </el-button>
-          <el-button v-else link type="primary" @click="toggle(scope.row, 'active')">
-            启用
-          </el-button>
+          </a-button>
+          <a-button v-else type="link" @click="toggle(record, 'active')">启用</a-button>
         </template>
-      </el-table-column>
-    </el-table>
-
-    <el-dialog v-model="dialogVisible" title="新建账号" width="440px">
-      <el-form :model="form" label-position="top">
-        <el-form-item label="用户名">
-          <el-input v-model="form.username" placeholder="至少 3 个字符" />
-        </el-form-item>
-        <el-form-item label="显示名">
-          <el-input v-model="form.displayName" />
-        </el-form-item>
-        <el-form-item label="角色">
-          <el-select v-model="form.role">
-            <el-option label="领队" value="LEADER" />
-            <el-option label="执行领队" value="DEPUTY_LEADER" />
-            <el-option label="队员" value="MEMBER" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="初始口令">
-          <el-input
-            v-model="form.password"
-            type="password"
-            show-password
-            placeholder="至少 10 个字符"
-          />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="createUser">创建</el-button>
       </template>
-    </el-dialog>
+    </a-table>
+
+    <a-modal
+      v-model:open="dialogVisible"
+      title="新建账号"
+      :confirm-loading="saving"
+      ok-text="创建"
+      cancel-text="取消"
+      @ok="createUser"
+    >
+      <a-form layout="vertical">
+        <a-form-item label="用户名">
+          <a-input v-model:value="form.username" placeholder="至少 3 个字符" />
+        </a-form-item>
+        <a-form-item label="显示名">
+          <a-input v-model:value="form.displayName" />
+        </a-form-item>
+        <a-form-item label="角色">
+          <a-select v-model:value="form.role" :options="roleOptions" />
+        </a-form-item>
+        <a-form-item label="初始口令">
+          <a-input-password v-model:value="form.password" placeholder="至少 10 个字符" />
+        </a-form-item>
+      </a-form>
+    </a-modal>
   </section>
 </template>
 
 <script setup lang="ts">
-import { ElMessage } from 'element-plus';
+import { message } from 'ant-design-vue';
 import { onMounted, reactive, ref } from 'vue';
 
 import { ApiError, api } from '@/api/client';
@@ -101,13 +94,27 @@ const saving = ref(false);
 const dialogVisible = ref(false);
 const form = reactive({ username: '', displayName: '', role: 'MEMBER', password: '' });
 
+const roleOptions = [
+  { label: '领队', value: 'LEADER' },
+  { label: '执行领队', value: 'DEPUTY_LEADER' },
+  { label: '队员', value: 'MEMBER' },
+];
+
+const columns = [
+  { title: '用户名', dataIndex: 'username', key: 'username', width: 180 },
+  { title: '显示名', dataIndex: 'displayName', key: 'displayName' },
+  { title: '角色', key: 'role', width: 180 },
+  { title: '状态', key: 'status', width: 110 },
+  { title: '操作', key: 'actions', width: 150 },
+];
+
 async function load(): Promise<void> {
   loading.value = true;
   try {
     const result = await api<{ items: UserItem[] }>('/users');
     users.value = result.items;
   } catch (error) {
-    ElMessage.error(error instanceof ApiError ? error.message : '加载账号失败');
+    message.error(error instanceof ApiError ? error.message : '加载账号失败');
   } finally {
     loading.value = false;
   }
@@ -123,7 +130,7 @@ function openCreate(): void {
 
 async function createUser(): Promise<void> {
   if (!form.username.trim() || !form.displayName.trim() || form.password.length < 10) {
-    ElMessage.warning('用户名、显示名与至少 10 位口令都必填');
+    message.warning('用户名、显示名与至少 10 位口令都必填');
     return;
   }
   saving.value = true;
@@ -138,10 +145,10 @@ async function createUser(): Promise<void> {
       }),
     });
     dialogVisible.value = false;
-    ElMessage.success('账号已创建');
+    message.success('账号已创建');
     await load();
   } catch (error) {
-    ElMessage.error(error instanceof ApiError ? error.message : '创建失败');
+    message.error(error instanceof ApiError ? error.message : '创建失败');
   } finally {
     saving.value = false;
   }
@@ -150,20 +157,20 @@ async function createUser(): Promise<void> {
 async function changeRole(item: UserItem, role: string): Promise<void> {
   try {
     await api(`/users/${item.userId}`, { method: 'PATCH', body: JSON.stringify({ role }) });
-    ElMessage.success('角色已更新');
+    message.success('角色已更新');
     await load();
   } catch (error) {
-    ElMessage.error(error instanceof ApiError ? error.message : '更新失败');
+    message.error(error instanceof ApiError ? error.message : '更新失败');
   }
 }
 
 async function toggle(item: UserItem, status: 'active' | 'disabled'): Promise<void> {
   try {
     await api(`/users/${item.userId}`, { method: 'PATCH', body: JSON.stringify({ status }) });
-    ElMessage.success(status === 'active' ? '已启用' : '已停用');
+    message.success(status === 'active' ? '已启用' : '已停用');
     await load();
   } catch (error) {
-    ElMessage.error(error instanceof ApiError ? error.message : '更新失败');
+    message.error(error instanceof ApiError ? error.message : '更新失败');
   }
 }
 
@@ -171,15 +178,10 @@ onMounted(load);
 </script>
 
 <style scoped>
-.toolbar {
+.page-head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  margin-bottom: 16px;
-}
-
-.toolbar h1 {
-  margin: 0;
-  font-size: 20px;
+  margin-bottom: 20px;
 }
 </style>

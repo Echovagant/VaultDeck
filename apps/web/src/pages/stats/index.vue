@@ -1,48 +1,49 @@
 <template>
   <section>
-    <h1>数据统计</h1>
-    <div class="toolbar">
-      <el-select v-model="projectId" placeholder="全部项目" clearable @change="load">
-        <el-option
-          v-for="project in projects"
-          :key="project.projectId"
-          :label="project.projectName"
-          :value="project.projectId"
-        />
-      </el-select>
-      <el-button :loading="loading" @click="load">刷新</el-button>
-      <el-button type="primary" :disabled="items.length === 0" @click="exportCsv">
+    <h1 class="vd-page-title">数据统计</h1>
+    <p class="vd-page-sub">按项目统计各类资料数量与容量，可导出 CSV</p>
+
+    <div class="vd-toolbar">
+      <a-select
+        v-model:value="projectId"
+        placeholder="全部项目"
+        allow-clear
+        style="width: 220px"
+        :options="projectOptions"
+        @change="load"
+      />
+      <a-button :loading="loading" @click="load">刷新</a-button>
+      <a-button type="primary" :disabled="items.length === 0" @click="exportCsv">
         导出 CSV
-      </el-button>
+      </a-button>
     </div>
 
-    <el-table v-loading="loading" :data="items">
-      <el-table-column prop="projectCode" label="项目编码" width="150" />
-      <el-table-column prop="projectName" label="项目名称" />
-      <el-table-column prop="totalFiles" label="文件数" width="100" />
-      <el-table-column label="容量" width="120">
-        <template #default="scope">{{ formatBytes(scope.row.totalBytes) }}</template>
-      </el-table-column>
-      <el-table-column label="回收站" width="150">
-        <template #default="scope">
-          {{ scope.row.trashFiles }} 个 / {{ formatBytes(scope.row.trashBytes) }}
+    <a-table
+      :columns="columns"
+      :data-source="items"
+      :loading="loading"
+      :pagination="false"
+      row-key="projectId"
+    >
+      <template #bodyCell="{ column, record }">
+        <template v-if="column.key === 'totalBytes'">{{ formatBytes(record.totalBytes) }}</template>
+        <template v-else-if="column.key === 'trash'">
+          {{ record.trashFiles }} 个 / {{ formatBytes(record.trashBytes) }}
         </template>
-      </el-table-column>
-      <el-table-column label="类型分布">
-        <template #default="scope">
-          <el-tag v-for="group in scope.row.groups" :key="group.type" size="small" class="type-tag">
+        <template v-else-if="column.key === 'groups'">
+          <a-tag v-for="group in record.groups" :key="group.type" style="margin-bottom: 4px">
             {{ group.type }}: {{ group.count }}
-          </el-tag>
-          <span v-if="scope.row.groups.length === 0" class="empty">无资料</span>
+          </a-tag>
+          <span v-if="record.groups.length === 0" class="muted">无资料</span>
         </template>
-      </el-table-column>
-    </el-table>
+      </template>
+    </a-table>
   </section>
 </template>
 
 <script setup lang="ts">
-import { ElMessage } from 'element-plus';
-import { onMounted, ref } from 'vue';
+import { message } from 'ant-design-vue';
+import { computed, onMounted, ref } from 'vue';
 
 import { ApiError, api, formatBytes, getToken, type ProjectSummary } from '@/api/client';
 
@@ -65,8 +66,21 @@ interface ProjectStat {
 
 const projects = ref<ProjectSummary[]>([]);
 const items = ref<ProjectStat[]>([]);
-const projectId = ref('');
+const projectId = ref<string | undefined>(undefined);
 const loading = ref(false);
+
+const columns = [
+  { title: '项目编码', dataIndex: 'projectCode', key: 'projectCode', width: 160 },
+  { title: '项目名称', dataIndex: 'projectName', key: 'projectName' },
+  { title: '文件数', dataIndex: 'totalFiles', key: 'totalFiles', width: 100 },
+  { title: '容量', key: 'totalBytes', width: 120 },
+  { title: '回收站', key: 'trash', width: 170 },
+  { title: '类型分布', key: 'groups' },
+];
+
+const projectOptions = computed(() =>
+  projects.value.map((project) => ({ label: project.projectName, value: project.projectId })),
+);
 
 async function loadProjects(): Promise<void> {
   const result = await api<{ items: ProjectSummary[] }>('/projects');
@@ -80,7 +94,7 @@ async function load(): Promise<void> {
     const result = await api<{ items: ProjectStat[] }>(`/stats/projects${query}`);
     items.value = result.items;
   } catch (error) {
-    ElMessage.error(error instanceof ApiError ? error.message : '加载统计失败');
+    message.error(error instanceof ApiError ? error.message : '加载统计失败');
   } finally {
     loading.value = false;
   }
@@ -110,7 +124,7 @@ async function exportCsv(): Promise<void> {
     anchor.click();
     URL.revokeObjectURL(url);
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '导出失败');
+    message.error(error instanceof Error ? error.message : '导出失败');
   }
 }
 
@@ -121,24 +135,8 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-h1 {
-  margin: 0 0 12px;
-  font-size: 20px;
-}
-
-.toolbar {
-  display: flex;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.type-tag {
-  margin-right: 6px;
-  margin-bottom: 4px;
-}
-
-.empty {
-  color: var(--el-text-color-secondary);
+.muted {
+  color: var(--vd-text-secondary);
   font-size: 13px;
 }
 </style>

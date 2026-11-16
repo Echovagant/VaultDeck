@@ -1,27 +1,30 @@
 <template>
-  <el-dialog
-    :model-value="modelValue"
+  <a-modal
+    :open="modelValue"
     :title="file?.fileName ?? '预览'"
     width="80%"
-    top="5vh"
-    @update:model-value="emit('update:modelValue', $event)"
-    @closed="cleanup"
+    :footer="null"
+    @update:open="emit('update:modelValue', $event)"
+    @after-close="cleanup"
   >
-    <div v-loading="loading" class="preview-body">
-      <iframe v-if="kind === 'pdf'" :src="objectUrl" class="pdf-frame" title="PDF 预览" />
-      <img v-else-if="kind === 'image'" :src="objectUrl" class="image" alt="图片预览" />
-      <pre v-else-if="kind === 'text'" class="text-block">{{ textContent }}</pre>
-      <el-empty v-else :description="loading ? '加载中' : '该格式暂不支持在线预览，请下载后查看'" />
+    <a-spin :spinning="loading">
+      <div class="preview-body">
+        <iframe v-if="kind === 'pdf'" :src="objectUrl" class="pdf-frame" title="PDF 预览" />
+        <img v-else-if="kind === 'image'" :src="objectUrl" class="image" alt="图片预览" />
+        <pre v-else-if="kind === 'text'" class="text-block">{{ textContent }}</pre>
+        <a-empty v-else description="该格式暂不支持在线预览，请下载后查看" />
+      </div>
+    </a-spin>
+
+    <div class="preview-footer">
+      <a-button @click="emit('update:modelValue', false)">关闭</a-button>
+      <a-button type="primary" @click="download">下载原文件</a-button>
     </div>
-    <template #footer>
-      <el-button @click="emit('update:modelValue', false)">关闭</el-button>
-      <el-button type="primary" @click="download">下载原文件</el-button>
-    </template>
-  </el-dialog>
+  </a-modal>
 </template>
 
 <script setup lang="ts">
-import { ElMessage } from 'element-plus';
+import { message } from 'ant-design-vue';
 import { ref, watch } from 'vue';
 
 import { getToken } from '@/api/client';
@@ -99,7 +102,7 @@ async function load(file: PreviewFile): Promise<void> {
       await response.body?.cancel();
     }
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '预览失败');
+    message.error(error instanceof Error ? error.message : '预览失败');
   } finally {
     loading.value = false;
   }
@@ -122,7 +125,7 @@ async function download(): Promise<void> {
     anchor.click();
     URL.revokeObjectURL(url);
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '下载失败');
+    message.error(error instanceof Error ? error.message : '下载失败');
   }
 }
 
@@ -158,10 +161,17 @@ watch(
 .text-block {
   margin: 0;
   padding: 12px;
-  background: var(--el-fill-color-lighter);
+  background: #fafafa;
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
   font-size: 13px;
   white-space: pre-wrap;
   word-break: break-all;
+}
+
+.preview-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
 }
 </style>

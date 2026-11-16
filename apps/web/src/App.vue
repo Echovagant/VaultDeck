@@ -1,38 +1,48 @@
 <template>
-  <el-container class="app-shell">
-    <el-header v-if="session.user" class="app-header">
-      <span class="app-title">VaultDeck</span>
-      <el-menu
-        mode="horizontal"
-        :default-active="activePath"
-        :ellipsis="false"
-        router
-        class="app-menu"
-      >
-        <el-menu-item index="/projects">项目</el-menu-item>
-        <el-menu-item v-if="session.user.role !== 'MEMBER'" index="/stats">统计</el-menu-item>
-        <el-menu-item v-if="session.user.role === 'LEADER'" index="/categories">分类</el-menu-item>
-        <el-menu-item v-if="session.user.role === 'LEADER'" index="/settings">设置</el-menu-item>
-        <el-menu-item index="/trash">回收站</el-menu-item>
-        <el-menu-item v-if="session.user.role !== 'MEMBER'" index="/audit">操作日志</el-menu-item>
-        <el-menu-item index="/admin">后台</el-menu-item>
-      </el-menu>
-      <el-input
-        v-model="searchKeyword"
-        class="search-box"
-        placeholder="搜索文件名"
-        clearable
-        @keyup.enter="onSearch"
-      />
-      <div class="app-user">
-        <span>{{ session.user.displayName }}（{{ roleLabel }}）</span>
-        <el-button link type="primary" @click="onLogout">退出</el-button>
-      </div>
-    </el-header>
-    <el-main>
-      <router-view />
-    </el-main>
-  </el-container>
+  <a-config-provider :theme="theme">
+    <a-layout class="vd-shell">
+      <a-layout-sider v-if="session.user" :width="224" theme="light" class="vd-sider">
+        <div class="vd-brand">
+          <span class="vd-brand-mark">V</span>
+          <span class="vd-brand-text">VaultDeck</span>
+        </div>
+
+        <a-menu mode="inline" :selected-keys="[activePath]" class="vd-menu" @click="onMenuClick">
+          <a-menu-item key="/projects">项目</a-menu-item>
+          <a-menu-item v-if="isLeaderOrDeputy" key="/stats">统计</a-menu-item>
+          <a-menu-item v-if="isLeader" key="/categories">分类</a-menu-item>
+          <a-menu-item key="/trash">回收站</a-menu-item>
+          <a-menu-item v-if="isLeaderOrDeputy" key="/audit">操作日志</a-menu-item>
+          <a-menu-item v-if="isLeader" key="/settings">设置</a-menu-item>
+          <a-menu-item key="/admin">后台</a-menu-item>
+        </a-menu>
+
+        <div class="vd-sider-footer">
+          <div class="vd-avatar">{{ initials }}</div>
+          <div class="vd-user-meta">
+            <div class="vd-user-name">{{ session.user.displayName }}</div>
+            <div class="vd-user-role">{{ roleLabel }}</div>
+          </div>
+        </div>
+      </a-layout-sider>
+
+      <a-layout>
+        <a-layout-header v-if="session.user" class="vd-header">
+          <a-input-search
+            v-model:value="searchKeyword"
+            placeholder="搜索文件名"
+            class="vd-search"
+            @search="onSearch"
+          />
+          <a-button type="text" @click="onLogout">退出登录</a-button>
+        </a-layout-header>
+
+        <a-layout-content :class="session.user ? 'vd-content' : 'vd-content-full'">
+          <router-view />
+        </a-layout-content>
+      </a-layout>
+    </a-layout>
+  </a-config-provider>
 </template>
 
 <script setup lang="ts">
@@ -45,6 +55,40 @@ const session = useSessionStore();
 const route = useRoute();
 const router = useRouter();
 
+const theme = {
+  token: {
+    colorPrimary: '#0071e3',
+    colorInfo: '#0071e3',
+    colorBgLayout: '#f5f5f7',
+    colorBgContainer: '#ffffff',
+    colorText: '#1d1d1f',
+    colorTextSecondary: '#6e6e73',
+    colorBorder: 'rgba(0, 0, 0, 0.1)',
+    borderRadius: 10,
+    controlHeight: 36,
+    fontFamily:
+      '-apple-system, "SF Pro Text", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif',
+  },
+  components: {
+    Menu: {
+      itemSelectedBg: '#e8f1fd',
+      itemSelectedColor: '#0071e3',
+      itemHeight: 42,
+    },
+    Table: {
+      headerBg: '#fafafa',
+      rowHoverBg: '#f5f9ff',
+    },
+    Layout: {
+      siderBg: '#ffffff',
+      headerBg: '#ffffff',
+    },
+  },
+};
+
+const isLeader = computed(() => session.user?.role === 'LEADER');
+const isLeaderOrDeputy = computed(() => session.user?.role !== 'MEMBER');
+
 const activePath = computed(() => {
   if (route.path.startsWith('/admin')) return '/admin';
   if (route.path.startsWith('/settings')) return '/settings';
@@ -52,18 +96,9 @@ const activePath = computed(() => {
   if (route.path.startsWith('/categories')) return '/categories';
   if (route.path.startsWith('/trash')) return '/trash';
   if (route.path.startsWith('/audit')) return '/audit';
-  if (route.path.startsWith('/search')) return '/search';
   return '/projects';
 });
 
-const searchKeyword = ref('');
-
-function onSearch(): void {
-  const value = searchKeyword.value.trim();
-  if (value.length >= 2) {
-    void router.push({ path: '/search', query: { q: value } });
-  }
-}
 const roleLabel = computed(() => {
   const labels: Record<string, string> = {
     LEADER: '领队',
@@ -73,6 +108,20 @@ const roleLabel = computed(() => {
   return labels[session.user?.role ?? ''] ?? session.user?.role ?? '';
 });
 
+const initials = computed(() => session.user?.displayName?.slice(0, 1) ?? 'U');
+const searchKeyword = ref('');
+
+function onMenuClick({ key }: { key: string }): void {
+  void router.push(key);
+}
+
+function onSearch(): void {
+  const keyword = searchKeyword.value.trim();
+  if (keyword.length >= 2) {
+    void router.push({ path: '/search', query: { q: keyword } });
+  }
+}
+
 async function onLogout(): Promise<void> {
   await session.logout();
   await router.push('/login');
@@ -80,31 +129,95 @@ async function onLogout(): Promise<void> {
 </script>
 
 <style scoped>
-.app-shell {
+.vd-shell {
   min-height: 100vh;
 }
 
-.app-header {
+.vd-sider {
   display: flex;
-  align-items: center;
-  gap: 24px;
-  border-bottom: 1px solid var(--el-border-color);
+  flex-direction: column;
+  border-right: 1px solid var(--vd-border);
 }
 
-.app-title {
-  font-size: 18px;
+.vd-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 20px 22px 16px;
+}
+
+.vd-brand-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: var(--vd-accent);
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.vd-brand-text {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+}
+
+.vd-menu {
+  flex: 1;
+  border-inline-end: none !important;
+  padding: 4px 10px;
+}
+
+.vd-sider-footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 22px;
+  border-top: 1px solid var(--vd-border);
+}
+
+.vd-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--vd-accent-soft);
+  color: var(--vd-accent);
   font-weight: 600;
 }
 
-.app-menu {
-  flex: 1;
-  border-bottom: none;
+.vd-user-name {
+  font-size: 13px;
+  font-weight: 600;
 }
 
-.app-user {
+.vd-user-role {
+  font-size: 12px;
+  color: var(--vd-text-secondary);
+}
+
+.vd-header {
   display: flex;
   align-items: center;
-  gap: 12px;
-  color: var(--el-text-color-secondary);
+  justify-content: space-between;
+  height: 64px;
+  padding: 0 28px;
+  border-bottom: 1px solid var(--vd-border);
+}
+
+.vd-search {
+  max-width: 320px;
+}
+
+.vd-content {
+  padding: 28px 32px 40px;
+}
+
+.vd-content-full {
+  padding: 0;
 }
 </style>

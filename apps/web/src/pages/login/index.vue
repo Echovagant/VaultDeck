@@ -1,36 +1,52 @@
 <template>
-  <div class="login-wrap">
-    <el-card class="login-card">
-      <h2>VaultDeck</h2>
-      <p class="hint">本地部署 · 团队资料管理</p>
-      <el-form :model="form" label-position="top" @submit.prevent="onSubmit">
-        <el-form-item label="用户名">
-          <el-input v-model="form.username" autocomplete="username" />
-        </el-form-item>
-        <el-form-item label="口令">
-          <el-input
-            v-model="form.password"
-            type="password"
-            show-password
+  <div class="login-page">
+    <div class="login-panel vd-card">
+      <div class="login-brand">
+        <span class="login-mark">V</span>
+        <span class="login-brand-text">VaultDeck</span>
+      </div>
+
+      <h1 class="login-title">登录资料系统</h1>
+      <p class="login-sub">本地部署 · 局域网内使用</p>
+
+      <a-form layout="vertical" :model="form" class="login-form" @finish="onSubmit">
+        <a-form-item
+          label="用户名"
+          name="username"
+          :rules="[{ required: true, message: '请输入用户名' }]"
+        >
+          <a-input v-model:value="form.username" size="large" autocomplete="username" />
+        </a-form-item>
+
+        <a-form-item
+          label="口令"
+          name="password"
+          :rules="[{ required: true, message: '请输入口令' }]"
+        >
+          <a-input-password
+            v-model:value="form.password"
+            size="large"
             autocomplete="current-password"
           />
-        </el-form-item>
-        <el-button type="primary" class="submit" :loading="loading" @click="onSubmit">
+        </a-form-item>
+
+        <a-button type="primary" html-type="submit" size="large" block :loading="loading">
           登录
-        </el-button>
-      </el-form>
-      <div class="dev-hint">
-        <div>开发期演示账号</div>
+        </a-button>
+      </a-form>
+
+      <div class="login-hint">
+        <div class="login-hint-title">开发期演示账号</div>
         <div>领队：leader / leader123</div>
         <div>执行领队：deputy / deputy123</div>
         <div>队员：member / member123</div>
       </div>
-    </el-card>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ElMessage } from 'element-plus';
+import { message } from 'ant-design-vue';
 import { reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
@@ -50,8 +66,7 @@ async function onSubmit(): Promise<void> {
     await session.login(form.username.trim(), form.password);
     await router.push('/projects');
   } catch (error) {
-    const message = error instanceof ApiError ? error.message : '登录失败';
-    ElMessage.error(message);
+    message.error(error instanceof ApiError ? error.message : '登录失败');
   } finally {
     loading.value = false;
   }
@@ -59,29 +74,78 @@ async function onSubmit(): Promise<void> {
 </script>
 
 <style scoped>
-.login-wrap {
+.login-page {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 80vh;
+  min-height: 100vh;
+  padding: 24px;
+  background:
+    radial-gradient(1200px 600px at 20% -10%, #e8f1fd 0%, transparent 55%),
+    radial-gradient(900px 500px at 90% 110%, #f5f0ff 0%, transparent 50%), var(--vd-bg);
 }
 
-.login-card {
-  width: 360px;
+.login-panel {
+  width: 400px;
+  padding: 36px 36px 28px;
+  border-radius: 20px;
 }
 
-.hint {
-  margin: 0 0 16px;
-  color: var(--el-text-color-secondary);
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 28px;
 }
 
-.submit {
-  width: 100%;
+.login-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--vd-accent);
+  color: #ffffff;
+  font-weight: 700;
 }
 
-.dev-hint {
-  margin: 12px 0 0;
+.login-brand-text {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+}
+
+.login-title {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.4px;
+}
+
+.login-sub {
+  margin: 6px 0 26px;
+  color: var(--vd-text-secondary);
+  font-size: 13px;
+}
+
+.login-form :deep(.ant-form-item-label > label) {
+  color: var(--vd-text-secondary);
+  font-size: 13px;
+}
+
+.login-hint {
+  margin-top: 22px;
+  padding-top: 16px;
+  border-top: 1px solid var(--vd-border);
+  color: var(--vd-text-secondary);
   font-size: 12px;
-  color: var(--el-text-color-placeholder);
+  line-height: 1.7;
+}
+
+.login-hint-title {
+  margin-bottom: 4px;
+  color: var(--vd-text);
+  font-weight: 600;
 }
 </style>

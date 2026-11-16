@@ -1,45 +1,52 @@
 <template>
   <section>
-    <div class="toolbar">
-      <h1>项目</h1>
-      <el-button type="primary" @click="dialogVisible = true">新建项目</el-button>
+    <div class="page-head">
+      <div>
+        <h1 class="vd-page-title">项目</h1>
+        <p class="vd-page-sub">按项目归档资料；领队可查看全部项目</p>
+      </div>
+      <a-button type="primary" @click="openCreate">新建项目</a-button>
     </div>
 
-    <el-table v-loading="loading" :data="projects">
-      <el-table-column prop="projectCode" label="编码" width="150" />
-      <el-table-column prop="projectName" label="项目名称" />
-      <el-table-column prop="fileCount" label="文件数" width="100" />
-      <el-table-column label="容量" width="120">
-        <template #default="scope">{{ formatBytes(scope.row.totalBytes) }}</template>
-      </el-table-column>
-      <el-table-column label="操作" width="130">
-        <template #default="scope">
-          <el-button link type="primary" @click="openProject(scope.row.projectId)">
-            查看资料
-          </el-button>
+    <a-table
+      :columns="columns"
+      :data-source="projects"
+      :loading="loading"
+      :pagination="false"
+      row-key="projectId"
+    >
+      <template #bodyCell="{ column, record }">
+        <template v-if="column.key === 'totalBytes'">
+          {{ formatBytes(record.totalBytes) }}
         </template>
-      </el-table-column>
-    </el-table>
-
-    <el-dialog v-model="dialogVisible" title="新建项目" width="420px">
-      <el-form :model="form" label-position="top">
-        <el-form-item label="项目编码">
-          <el-input v-model="form.projectCode" placeholder="例如 ARCH-2026-001" />
-        </el-form-item>
-        <el-form-item label="项目名称">
-          <el-input v-model="form.projectName" placeholder="例如 某遗址发掘" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="onCreate">创建</el-button>
+        <template v-else-if="column.key === 'actions'">
+          <a-button type="link" @click="openProject(record.projectId)">查看资料</a-button>
+        </template>
       </template>
-    </el-dialog>
+    </a-table>
+
+    <a-modal
+      v-model:open="dialogVisible"
+      title="新建项目"
+      :confirm-loading="saving"
+      ok-text="创建"
+      cancel-text="取消"
+      @ok="onCreate"
+    >
+      <a-form layout="vertical">
+        <a-form-item label="项目编码">
+          <a-input v-model:value="form.projectCode" placeholder="例如 ARCH-2026-001" />
+        </a-form-item>
+        <a-form-item label="项目名称">
+          <a-input v-model:value="form.projectName" placeholder="例如 某遗址发掘" />
+        </a-form-item>
+      </a-form>
+    </a-modal>
   </section>
 </template>
 
 <script setup lang="ts">
-import { ElMessage } from 'element-plus';
+import { message } from 'ant-design-vue';
 import { onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
@@ -52,21 +59,35 @@ const saving = ref(false);
 const dialogVisible = ref(false);
 const form = reactive({ projectCode: '', projectName: '' });
 
+const columns = [
+  { title: '编码', dataIndex: 'projectCode', key: 'projectCode', width: 170 },
+  { title: '项目名称', dataIndex: 'projectName', key: 'projectName' },
+  { title: '文件数', dataIndex: 'fileCount', key: 'fileCount', width: 110 },
+  { title: '容量', key: 'totalBytes', width: 130 },
+  { title: '操作', key: 'actions', width: 140 },
+];
+
 async function load(): Promise<void> {
   loading.value = true;
   try {
     const result = await api<{ items: ProjectSummary[] }>('/projects');
     projects.value = result.items;
   } catch (error) {
-    ElMessage.error(error instanceof ApiError ? error.message : '加载项目失败');
+    message.error(error instanceof ApiError ? error.message : '加载项目失败');
   } finally {
     loading.value = false;
   }
 }
 
+function openCreate(): void {
+  form.projectCode = '';
+  form.projectName = '';
+  dialogVisible.value = true;
+}
+
 async function onCreate(): Promise<void> {
   if (!form.projectCode.trim() || !form.projectName.trim()) {
-    ElMessage.warning('项目编码与名称不能为空');
+    message.warning('项目编码与名称不能为空');
     return;
   }
   saving.value = true;
@@ -79,12 +100,10 @@ async function onCreate(): Promise<void> {
       }),
     });
     dialogVisible.value = false;
-    form.projectCode = '';
-    form.projectName = '';
-    ElMessage.success('项目已创建');
+    message.success('项目已创建');
     await load();
   } catch (error) {
-    ElMessage.error(error instanceof ApiError ? error.message : '创建失败');
+    message.error(error instanceof ApiError ? error.message : '创建失败');
   } finally {
     saving.value = false;
   }
@@ -98,15 +117,10 @@ onMounted(load);
 </script>
 
 <style scoped>
-.toolbar {
+.page-head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  margin-bottom: 16px;
-}
-
-.toolbar h1 {
-  margin: 0;
-  font-size: 20px;
+  margin-bottom: 20px;
 }
 </style>

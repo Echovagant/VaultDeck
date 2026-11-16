@@ -1,36 +1,41 @@
 <template>
   <section>
-    <h1>搜索</h1>
-    <div class="toolbar">
-      <el-input
-        v-model="keyword"
+    <h1 class="vd-page-title">搜索</h1>
+    <p class="vd-page-sub">按文件名检索你有权查看的资料</p>
+
+    <div class="vd-toolbar">
+      <a-input-search
+        v-model:value="keyword"
         placeholder="输入文件名关键词，至少 2 个字符"
-        clearable
-        @keyup.enter="search"
+        enter-button="搜索"
+        :loading="loading"
+        style="max-width: 420px"
+        @search="search"
       />
-      <el-button type="primary" :loading="loading" @click="search">搜索</el-button>
     </div>
 
-    <el-table v-loading="loading" :data="items">
-      <el-table-column prop="fileName" label="文件名" />
-      <el-table-column prop="projectName" label="项目" width="180" />
-      <el-table-column label="大小" width="110">
-        <template #default="scope">{{ formatBytes(scope.row.sizeBytes) }}</template>
-      </el-table-column>
-      <el-table-column label="上传时间" width="180">
-        <template #default="scope">{{ new Date(scope.row.createdAt).toLocaleString() }}</template>
-      </el-table-column>
-      <el-table-column label="操作" width="210">
-        <template #default="scope">
-          <el-button link type="primary" @click="openPreview(scope.row)">预览</el-button>
-          <el-button link type="primary" @click="download(scope.row)">下载</el-button>
-          <el-button link type="primary" @click="openProject(scope.row)">进入项目</el-button>
+    <a-table
+      :columns="columns"
+      :data-source="items"
+      :loading="loading"
+      :pagination="false"
+      row-key="fileId"
+    >
+      <template #bodyCell="{ column, record }">
+        <template v-if="column.key === 'sizeBytes'">{{ formatBytes(record.sizeBytes) }}</template>
+        <template v-else-if="column.key === 'createdAt'">
+          {{ new Date(record.createdAt).toLocaleString() }}
         </template>
-      </el-table-column>
-    </el-table>
+        <template v-else-if="column.key === 'actions'">
+          <a-button type="link" @click="openPreview(record)">预览</a-button>
+          <a-button type="link" @click="download(record)">下载</a-button>
+          <a-button type="link" @click="openProject(record)">进入项目</a-button>
+        </template>
+      </template>
+    </a-table>
 
-    <p v-if="searched && items.length === 0" class="empty">没有匹配的文件</p>
-    <p v-if="total > items.length" class="empty">
+    <a-empty v-if="searched && items.length === 0" description="没有匹配的文件" />
+    <p v-if="total > items.length" class="hint">
       共 {{ total }} 条，仅显示前 {{ items.length }} 条
     </p>
 
@@ -39,7 +44,7 @@
 </template>
 
 <script setup lang="ts">
-import { ElMessage } from 'element-plus';
+import { message } from 'ant-design-vue';
 import { onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
@@ -66,15 +71,18 @@ const searched = ref(false);
 const previewVisible = ref(false);
 const previewFile = ref<SearchItem | null>(null);
 
-function openPreview(item: SearchItem): void {
-  previewFile.value = item;
-  previewVisible.value = true;
-}
+const columns = [
+  { title: '文件名', dataIndex: 'fileName', key: 'fileName' },
+  { title: '项目', dataIndex: 'projectName', key: 'projectName', width: 190 },
+  { title: '大小', key: 'sizeBytes', width: 120 },
+  { title: '上传时间', key: 'createdAt', width: 190 },
+  { title: '操作', key: 'actions', width: 230 },
+];
 
 async function search(): Promise<void> {
   const value = keyword.value.trim();
   if (value.length < 2) {
-    ElMessage.warning('关键词至少 2 个字符');
+    message.warning('关键词至少 2 个字符');
     return;
   }
 
@@ -88,7 +96,7 @@ async function search(): Promise<void> {
     searched.value = true;
     await router.replace({ path: '/search', query: { q: value } });
   } catch (error) {
-    ElMessage.error(error instanceof ApiError ? error.message : '搜索失败');
+    message.error(error instanceof ApiError ? error.message : '搜索失败');
   } finally {
     loading.value = false;
   }
@@ -109,8 +117,13 @@ async function download(item: SearchItem): Promise<void> {
     anchor.click();
     URL.revokeObjectURL(url);
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '下载失败');
+    message.error(error instanceof Error ? error.message : '下载失败');
   }
+}
+
+function openPreview(item: SearchItem): void {
+  previewFile.value = item;
+  previewVisible.value = true;
 }
 
 function openProject(item: SearchItem): void {
@@ -123,20 +136,9 @@ onMounted(() => {
 </script>
 
 <style scoped>
-h1 {
-  margin: 0 0 12px;
-  font-size: 20px;
-}
-
-.toolbar {
-  display: flex;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.empty {
+.hint {
   margin-top: 12px;
-  color: var(--el-text-color-secondary);
+  color: var(--vd-text-secondary);
   font-size: 13px;
 }
 </style>

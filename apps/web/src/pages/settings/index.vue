@@ -1,34 +1,52 @@
 <template>
   <section>
-    <h1>系统设置</h1>
-    <p class="hint">修改后立即生效；回收站天数只影响之后删除的文件。</p>
+    <h1 class="vd-page-title">系统设置</h1>
+    <p class="vd-page-sub">修改后立即生效；回收站天数只影响之后删除的文件</p>
 
-    <el-form v-loading="loading" :model="form" label-width="160px" class="settings-form">
-      <el-form-item label="单文件上传上限">
-        <el-input-number v-model="form.maxUploadGb" :min="0.1" :max="200" :step="0.5" />
-        <span class="unit">GB</span>
-      </el-form-item>
-      <el-form-item label="分片大小">
-        <el-input-number v-model="form.chunkSizeMb" :min="1" :max="64" :step="1" />
-        <span class="unit">MB</span>
-      </el-form-item>
-      <el-form-item label="回收站保留天数">
-        <el-input-number v-model="form.trashRetentionDays" :min="1" :max="365" />
-        <span class="unit">天</span>
-      </el-form-item>
-      <el-form-item label="启用秒传">
-        <el-switch v-model="form.instantUploadEnabled" />
-      </el-form-item>
-      <el-form-item>
-        <el-button type="primary" :loading="saving" @click="save">保存</el-button>
-        <el-button @click="load">重置</el-button>
-      </el-form-item>
-    </el-form>
+    <div class="vd-card settings-card">
+      <a-form layout="vertical" :model="form">
+        <a-form-item label="单文件上传上限（GB）">
+          <a-input-number
+            v-model:value="form.maxUploadGb"
+            :min="0.1"
+            :max="200"
+            :step="0.5"
+            style="width: 220px"
+          />
+        </a-form-item>
+        <a-form-item label="分片大小（MB）">
+          <a-input-number
+            v-model:value="form.chunkSizeMb"
+            :min="1"
+            :max="64"
+            :step="1"
+            style="width: 220px"
+          />
+        </a-form-item>
+        <a-form-item label="回收站保留天数">
+          <a-input-number
+            v-model:value="form.trashRetentionDays"
+            :min="1"
+            :max="365"
+            style="width: 220px"
+          />
+        </a-form-item>
+        <a-form-item label="启用秒传">
+          <a-switch v-model:checked="form.instantUploadEnabled" />
+        </a-form-item>
+        <a-form-item>
+          <a-space>
+            <a-button type="primary" :loading="saving" @click="save">保存</a-button>
+            <a-button @click="load">重置</a-button>
+          </a-space>
+        </a-form-item>
+      </a-form>
+    </div>
   </section>
 </template>
 
 <script setup lang="ts">
-import { ElMessage } from 'element-plus';
+import { message } from 'ant-design-vue';
 import { onMounted, reactive, ref } from 'vue';
 
 import { ApiError, api } from '@/api/client';
@@ -61,7 +79,7 @@ async function load(): Promise<void> {
     form.trashRetentionDays = result.trashRetentionDays;
     form.instantUploadEnabled = result.instantUploadEnabled;
   } catch (error) {
-    ElMessage.error(error instanceof ApiError ? error.message : '加载设置失败');
+    message.error(error instanceof ApiError ? error.message : '加载设置失败');
   } finally {
     loading.value = false;
   }
@@ -79,10 +97,10 @@ async function save(): Promise<void> {
         instantUploadEnabled: form.instantUploadEnabled,
       }),
     });
-    ElMessage.success('设置已保存');
+    message.success('设置已保存');
     await load();
   } catch (error) {
-    ElMessage.error(error instanceof ApiError ? error.message : '保存失败');
+    message.error(error instanceof ApiError ? error.message : '保存失败');
   } finally {
     saving.value = false;
   }
@@ -92,23 +110,9 @@ onMounted(load);
 </script>
 
 <style scoped>
-h1 {
-  margin: 0 0 4px;
-  font-size: 20px;
-}
-
-.hint {
-  margin: 0 0 20px;
-  color: var(--el-text-color-secondary);
-  font-size: 13px;
-}
-
-.settings-form {
+.settings-card {
   max-width: 520px;
-}
-
-.unit {
-  margin-left: 8px;
-  color: var(--el-text-color-secondary);
+  padding: 24px;
+  margin-top: 20px;
 }
 </style>
