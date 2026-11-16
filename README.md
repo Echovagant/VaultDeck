@@ -21,16 +21,13 @@
     packages/shared 契约生成类型与共享常量
     contracts       对外契约
     deploy/windows  Windows 发布包与服务定义
-    docs            需求、设计、决策、计划、运维与验收
-    tasks.md        任务清单
+    docs            设计、决策与运维文档
 
 ## 文档索引
 
-- 需求规格：`docs/specs/requirements.md`
 - 实现方案：`docs/design/design.md`
 - 架构决策：`docs/decisions/`
-- 项目计划：`docs/plans/project-plan.md`
-- 任务清单：`tasks.md`
+- 运维文档：`docs/ops/`
 
 ## 开发前置
 
