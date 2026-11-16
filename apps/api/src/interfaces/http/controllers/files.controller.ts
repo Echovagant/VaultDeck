@@ -5,7 +5,7 @@ import type { FastifyReply } from 'fastify';
 
 import { store } from '../../../infrastructure/store';
 import { objectStorage } from '../../../infrastructure/memory/upload-sessions';
-import { createLibreOfficePreview } from '../../../infrastructure/preview/libreoffice-preview';
+import { previewAdapter } from '../../../infrastructure/preview';
 import { DomainError } from '../errors/problem-details';
 import { toPublicFile } from '../presenters/file.presenter';
 import { requireUser } from './auth.controller';
@@ -148,5 +148,3 @@ export class FilesController {
     return createReadStream(pdfPath);
   }
 }
-
-const previewAdapter = createLibreOfficePreview();

@@ -18,10 +18,12 @@ const relationships = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
 </Relationships>`;
 
+const title = process.argv[3] ?? 'VaultDeck Office 预览测试';
+
 const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:body>
-    <w:p><w:r><w:t>VaultDeck Office 预览测试</w:t></w:r></w:p>
+    <w:p><w:r><w:t>${title}</w:t></w:r></w:p>
     <w:p><w:r><w:t>第二段：转换后应可在浏览器内直接查看。</w:t></w:r></w:p>
   </w:body>
 </w:document>`;

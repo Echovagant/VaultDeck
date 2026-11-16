@@ -9,6 +9,7 @@ import {
   uploadSessions,
 } from '../../../infrastructure/memory/upload-sessions';
 import { DomainError } from '../errors/problem-details';
+import { previewAdapter } from '../../../infrastructure/preview';
 import { toPublicFile } from '../presenters/file.presenter';
 import { StrictBodyPipe } from '../validation/strict-body.pipe';
 import { requireUser } from './auth.controller';
@@ -220,6 +221,14 @@ export class UploadController {
       result: 'success',
       detail: file.fileName,
     });
+
+    if (previewAdapter.supports(file.fileName) && file.objectPath) {
+      void previewAdapter
+        .convertToPdf({ fileId: file.fileId, objectPath: file.objectPath })
+        .catch(() => {
+          // 预转换失败不影响上传结果，预览时会再次尝试
+        });
+    }
 
     await objectStorage.cleanupSession(sessionId);
     uploadSessions.delete(sessionId);
