@@ -1,0 +1,12 @@
+{
+  "extends": ["spectral:oas"],
+  "rules": {
+    "info-contact": "off",
+    "info-description": "off",
+    "operation-description": "off",
+    "operation-tags": "error",
+    "operation-operationId": "error",
+    "oas3-api-servers": "error",
+    "no-$ref-siblings": "error"
+  }
+}

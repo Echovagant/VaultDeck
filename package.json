@@ -1,0 +1,33 @@
+{
+  "name": "vaultdeck",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Local-first team data management system",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "contract:lint": "spectral lint contracts/openapi/v1.yaml --ruleset .spectral.json",
+    "contract:gen": "openapi-typescript contracts/openapi/v1.yaml -o packages/shared/src/generated/api.ts",
+    "contract:check": "node scripts/contracts-check.mjs",
+    "typecheck": "npm run typecheck --workspace @vaultdeck/api && npm run typecheck --workspace @vaultdeck/web && npm run typecheck --workspace @vaultdeck/shared"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@stoplight/spectral-cli": "^6.17.1",
+    "eslint": "^9.0.0",
+    "globals": "^15.0.0",
+    "openapi-typescript": "^7.13.0",
+    "prettier": "^3.0.0",
+    "typescript": "^5.6.0",
+    "typescript-eslint": "^8.0.0"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

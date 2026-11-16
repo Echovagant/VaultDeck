@@ -1,0 +1,1155 @@
+openapi: 3.1.0
+info:
+  title: VaultDeck API
+  version: 1.0.0
+  description: 本地部署资料管理系统的对外契约。错误统一使用 RFC 9457 Problem Details，越权一律返回 404。
+  license:
+    name: Proprietary
+servers:
+  - url: /api/v1
+security:
+  - cookieAuth: []
+tags:
+  - name: auth
+  - name: users
+  - name: projects
+  - name: categories
+  - name: folders
+  - name: files
+  - name: upload-sessions
+  - name: bundles
+  - name: trash
+  - name: search
+  - name: stats
+  - name: audit
+  - name: imports
+  - name: system
+paths:
+  /auth/login:
+    post:
+      tags: [auth]
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: 登录成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Principal' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /auth/logout:
+    post:
+      tags: [auth]
+      operationId: logout
+      responses:
+        '204': { description: 已登出 }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /auth/password:
+    put:
+      tags: [auth]
+      operationId: changePassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChangePasswordRequest' }
+      responses:
+        '204': { description: 已修改，其他会话失效 }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /users:
+    get:
+      tags: [users]
+      operationId: listUsers
+      parameters:
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: pageSize, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        '200':
+          description: 用户列表
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserPage' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [users]
+      operationId: createUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateUserRequest' }
+      responses:
+        '201':
+          description: 已创建
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /users/{userId}:
+    patch:
+      tags: [users]
+      operationId: updateUser
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateUserRequest' }
+      responses:
+        '200':
+          description: 已更新
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /projects:
+    get:
+      tags: [projects]
+      operationId: listProjects
+      responses:
+        '200':
+          description: 项目列表
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectList' }
+    post:
+      tags: [projects]
+      operationId: createProject
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateProjectRequest' }
+      responses:
+        '201':
+          description: 已创建
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Project' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /projects/{projectId}:
+    get:
+      tags: [projects]
+      operationId: getProject
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '200':
+          description: 项目详情
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Project' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /projects/{projectId}/members:
+    get:
+      tags: [projects]
+      operationId: listProjectMembers
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '200':
+          description: 成员列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ProjectMember' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [projects]
+      operationId: addProjectMember
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AddProjectMemberRequest' }
+      responses:
+        '201':
+          description: 已加入
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectMember' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /categories:
+    get:
+      tags: [categories]
+      operationId: listCategories
+      responses:
+        '200':
+          description: 类型分类列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Category' }
+    post:
+      tags: [categories]
+      operationId: createCategory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateCategoryRequest' }
+      responses:
+        '201':
+          description: 已创建
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Category' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /folders:
+    get:
+      tags: [folders]
+      operationId: listFolders
+      parameters:
+        - { name: projectId, in: query, required: true, schema: { type: string, format: uuid } }
+        - { name: parentId, in: query, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: 文件夹树
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Folder' }
+    post:
+      tags: [folders]
+      operationId: createFolder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateFolderRequest' }
+      responses:
+        '201':
+          description: 已创建
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Folder' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /folders/{folderId}:
+    patch:
+      tags: [folders]
+      operationId: updateFolder
+      parameters:
+        - $ref: '#/components/parameters/FolderId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateFolderRequest' }
+      responses:
+        '200':
+          description: 已更新
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Folder' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+    delete:
+      tags: [folders]
+      operationId: deleteFolder
+      parameters:
+        - $ref: '#/components/parameters/FolderId'
+      responses:
+        '204': { description: 已移入回收站 }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /files:
+    get:
+      tags: [files]
+      operationId: listFiles
+      parameters:
+        - { name: projectId, in: query, required: true, schema: { type: string, format: uuid } }
+        - { name: folderId, in: query, schema: { type: string, format: uuid } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: pageSize, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+      responses:
+        '200':
+          description: 文件列表
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FilePage' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /files/{fileId}:
+    get:
+      tags: [files]
+      operationId: getFile
+      parameters:
+        - $ref: '#/components/parameters/FileId'
+      responses:
+        '200':
+          description: 文件信息
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/File' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [files]
+      operationId: updateFile
+      parameters:
+        - $ref: '#/components/parameters/FileId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateFileRequest' }
+      responses:
+        '200':
+          description: 已更新
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/File' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [files]
+      operationId: deleteFile
+      parameters:
+        - $ref: '#/components/parameters/FileId'
+      responses:
+        '204': { description: 已移入回收站 }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /files/{fileId}/content:
+    get:
+      tags: [files]
+      operationId: downloadFile
+      parameters:
+        - $ref: '#/components/parameters/FileId'
+        - $ref: '#/components/parameters/RangeHeader'
+      responses:
+        '200':
+          description: 完整文件
+          headers:
+            ETag: { schema: { type: string } }
+            Accept-Ranges: { schema: { type: string } }
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        '206':
+          description: 部分内容
+          headers:
+            Content-Range: { schema: { type: string } }
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '416': { $ref: '#/components/responses/RangeNotSatisfiable' }
+  /upload-sessions/precheck:
+    post:
+      tags: [upload-sessions]
+      operationId: precheckUpload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PrecheckRequest' }
+      responses:
+        '200':
+          description: 预检结果，三态之一
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PrecheckResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /upload-sessions/{sessionId}:
+    get:
+      tags: [upload-sessions]
+      operationId: getUploadSession
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      responses:
+        '200':
+          description: 上传进度
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UploadSession' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '410': { $ref: '#/components/responses/Gone' }
+  /upload-sessions/{sessionId}/chunks/{index}:
+    put:
+      tags: [upload-sessions]
+      operationId: putChunk
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+        - { name: index, in: path, required: true, schema: { type: integer, minimum: 0 } }
+        - { name: Digest, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+              x-max-bytes: 8388608
+      responses:
+        '200':
+          description: 分片已接收或幂等重复
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChunkReceipt' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '410': { $ref: '#/components/responses/Gone' }
+  /upload-sessions/{sessionId}/complete:
+    post:
+      tags: [upload-sessions]
+      operationId: completeUpload
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CompleteUploadRequest' }
+      responses:
+        '200':
+          description: 已合并完成
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/File' }
+        '202':
+          description: 合并中
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JobAccepted' }
+        '409':
+          description: 分片缺失
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+  /bundles:
+    post:
+      tags: [bundles]
+      operationId: createBundle
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateBundleRequest' }
+      responses:
+        '201':
+          description: 打包任务已创建
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Bundle' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /bundles/{bundleId}:
+    get:
+      tags: [bundles]
+      operationId: getBundle
+      parameters:
+        - $ref: '#/components/parameters/BundleId'
+      responses:
+        '200':
+          description: 打包状态
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Bundle' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /bundles/{bundleId}/content:
+    get:
+      tags: [bundles]
+      operationId: downloadBundle
+      parameters:
+        - $ref: '#/components/parameters/BundleId'
+        - $ref: '#/components/parameters/RangeHeader'
+      responses:
+        '200':
+          description: ZIP 内容
+          content:
+            application/zip:
+              schema: { type: string, format: binary }
+        '206':
+          description: ZIP 部分内容
+          content:
+            application/zip:
+              schema: { type: string, format: binary }
+        '202':
+          description: 仍在排队
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JobAccepted' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /trash:
+    get:
+      tags: [trash]
+      operationId: listTrash
+      responses:
+        '200':
+          description: 回收站条目
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/TrashEntry' }
+  /trash/{trashId}/restore:
+    post:
+      tags: [trash]
+      operationId: restoreTrashEntry
+      parameters:
+        - { name: trashId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: 已恢复
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/File' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '410': { $ref: '#/components/responses/Gone' }
+  /search:
+    get:
+      tags: [search]
+      operationId: searchFiles
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string, minLength: 2 } }
+        - { name: projectId, in: query, schema: { type: string, format: uuid } }
+        - { name: categoryId, in: query, schema: { type: string, format: uuid } }
+        - { name: uploaderId, in: query, schema: { type: string, format: uuid } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: pageSize, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+      responses:
+        '200':
+          description: 搜索结果
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SearchResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /stats/projects:
+    get:
+      tags: [stats]
+      operationId: getProjectStats
+      parameters:
+        - { name: projectId, in: query, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: 项目统计
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectStats' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /stats/exports:
+    post:
+      tags: [stats]
+      operationId: createStatsExport
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateStatsExportRequest' }
+      responses:
+        '201':
+          description: 导出任务已创建
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StatsExport' }
+  /stats/exports/{exportId}/content:
+    get:
+      tags: [stats]
+      operationId: downloadStatsExport
+      parameters:
+        - { name: exportId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: CSV 内容
+          content:
+            text/csv:
+              schema: { type: string }
+        '202':
+          description: 仍在生成
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JobAccepted' }
+  /audit:
+    get:
+      tags: [audit]
+      operationId: listAudit
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+        - { name: actorId, in: query, schema: { type: string, format: uuid } }
+        - { name: action, in: query, schema: { type: string } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: pageSize, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+      responses:
+        '200':
+          description: 审计条目
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuditPage' }
+  /import-jobs:
+    post:
+      tags: [imports]
+      operationId: createImportJob
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateImportJobRequest' }
+      responses:
+        '201':
+          description: 导入任务已创建
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImportJob' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+    get:
+      tags: [imports]
+      operationId: listImportJobs
+      responses:
+        '200':
+          description: 导入任务列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ImportJob' }
+  /import-jobs/{jobId}:
+    get:
+      tags: [imports]
+      operationId: getImportJob
+      parameters:
+        - { name: jobId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: 导入进度
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImportJob' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /system/health:
+    get:
+      tags: [system]
+      operationId: getHealth
+      security: []
+      responses:
+        '200':
+          description: 健康状态
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Health' }
+  /system/settings:
+    get:
+      tags: [system]
+      operationId: getSettings
+      responses:
+        '200':
+          description: 系统设置
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Settings' }
+    patch:
+      tags: [system]
+      operationId: updateSettings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SettingsPatch' }
+      responses:
+        '200':
+          description: 已更新
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Settings' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: vd_session
+  parameters:
+    UserId:
+      name: userId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    FolderId:
+      name: folderId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    FileId:
+      name: fileId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    SessionId:
+      name: sessionId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    BundleId:
+      name: bundleId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    RangeHeader:
+      name: Range
+      in: header
+      required: false
+      description: 形如 bytes=0-1048575
+      schema: { type: string }
+  responses:
+    BadRequest:
+      description: 请求错误
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Unauthorized:
+      description: 未认证
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    NotFound:
+      description: 不存在或不可见
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Conflict:
+      description: 冲突
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Gone:
+      description: 已过期
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    RangeNotSatisfiable:
+      description: Range 不可满足
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    TooManyRequests:
+      description: 触发限流
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+  schemas:
+    Problem:
+      type: object
+      required: [type, title, status, code, requestId]
+      additionalProperties: false
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        code: { type: string, pattern: '^VD-[A-Z]{3}-[0-9]{3}$' }
+        requestId: { type: string }
+        errors:
+          type: array
+          items:
+            type: object
+            required: [field, message]
+            properties:
+              field: { type: string }
+              message: { type: string }
+    RoleCode:
+      type: string
+      enum: [LEADER, DEPUTY_LEADER, MEMBER]
+    LoginRequest:
+      type: object
+      required: [username, password]
+      additionalProperties: false
+      properties:
+        username: { type: string, minLength: 1, maxLength: 64 }
+        password: { type: string, minLength: 1, maxLength: 256 }
+    ChangePasswordRequest:
+      type: object
+      required: [currentPassword, newPassword]
+      additionalProperties: false
+      properties:
+        currentPassword: { type: string }
+        newPassword: { type: string, minLength: 10, maxLength: 256 }
+    Principal:
+      type: object
+      required: [userId, username, displayName, role]
+      properties:
+        userId: { type: string, format: uuid }
+        username: { type: string }
+        displayName: { type: string }
+        role: { $ref: '#/components/schemas/RoleCode' }
+        projectIds:
+          type: array
+          items: { type: string, format: uuid }
+    User:
+      type: object
+      required: [userId, username, displayName, role, status]
+      properties:
+        userId: { type: string, format: uuid }
+        username: { type: string }
+        displayName: { type: string }
+        role: { $ref: '#/components/schemas/RoleCode' }
+        status: { type: string, enum: [active, disabled] }
+        lastLoginAt: { type: string, format: date-time }
+    UserPage:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/User' }
+        total: { type: integer, minimum: 0 }
+    CreateUserRequest:
+      type: object
+      required: [username, displayName, role]
+      additionalProperties: false
+      properties:
+        username: { type: string, minLength: 3, maxLength: 64 }
+        displayName: { type: string, minLength: 1, maxLength: 64 }
+        role: { $ref: '#/components/schemas/RoleCode' }
+    UpdateUserRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        displayName: { type: string, minLength: 1, maxLength: 64 }
+        role: { $ref: '#/components/schemas/RoleCode' }
+        status: { type: string, enum: [active, disabled] }
+    Project:
+      type: object
+      required: [projectId, projectCode, projectName, status]
+      properties:
+        projectId: { type: string, format: uuid }
+        projectCode: { type: string }
+        projectName: { type: string }
+        status: { type: string, enum: [active, archived] }
+        createdAt: { type: string, format: date-time }
+    ProjectList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Project' }
+    CreateProjectRequest:
+      type: object
+      required: [projectCode, projectName]
+      additionalProperties: false
+      properties:
+        projectCode: { type: string, minLength: 1, maxLength: 32 }
+        projectName: { type: string, minLength: 1, maxLength: 128 }
+    ProjectMember:
+      type: object
+      required: [projectId, userId, memberRole]
+      properties:
+        projectId: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        memberRole: { type: string, enum: [DEPUTY_LEADER, MEMBER] }
+        joinedAt: { type: string, format: date-time }
+    AddProjectMemberRequest:
+      type: object
+      required: [userId, memberRole]
+      additionalProperties: false
+      properties:
+        userId: { type: string, format: uuid }
+        memberRole: { type: string, enum: [DEPUTY_LEADER, MEMBER] }
+    Category:
+      type: object
+      required: [categoryId, categoryCode, categoryName, isSystem]
+      properties:
+        categoryId: { type: string, format: uuid }
+        categoryCode: { type: string }
+        categoryName: { type: string }
+        extensions:
+          type: array
+          items: { type: string }
+        isSystem: { type: boolean }
+    CreateCategoryRequest:
+      type: object
+      required: [categoryCode, categoryName, extensions]
+      additionalProperties: false
+      properties:
+        categoryCode: { type: string, minLength: 1, maxLength: 32 }
+        categoryName: { type: string, minLength: 1, maxLength: 64 }
+        extensions:
+          type: array
+          minItems: 1
+          items: { type: string, pattern: '^\.[a-z0-9]+$' }
+    Folder:
+      type: object
+      required: [folderId, projectId, folderName]
+      properties:
+        folderId: { type: string, format: uuid }
+        projectId: { type: string, format: uuid }
+        parentId:
+          type: [string, 'null']
+          format: uuid
+        folderName: { type: string }
+        depth: { type: integer, minimum: 0 }
+    CreateFolderRequest:
+      type: object
+      required: [projectId, folderName]
+      additionalProperties: false
+      properties:
+        projectId: { type: string, format: uuid }
+        parentId:
+          type: [string, 'null']
+          format: uuid
+        folderName: { type: string, minLength: 1, maxLength: 200 }
+    UpdateFolderRequest:
+      type: object
+      required: [folderName]
+      additionalProperties: false
+      properties:
+        folderName: { type: string, minLength: 1, maxLength: 200 }
+    File:
+      type: object
+      required: [fileId, fileName, sizeBytes, projectId, folderId, categoryId, sha256]
+      properties:
+        fileId: { type: string, format: uuid }
+        fileName: { type: string }
+        extension: { type: string }
+        sizeBytes: { type: integer, minimum: 1 }
+        projectId: { type: string, format: uuid }
+        folderId: { type: string, format: uuid }
+        categoryId: { type: string, format: uuid }
+        uploaderId: { type: string, format: uuid }
+        sha256: { type: string, pattern: '^[a-f0-9]{64}$' }
+        status: { type: string, enum: [active, trashed, purging, corrupted] }
+        createdAt: { type: string, format: date-time }
+    FilePage:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/File' }
+        total: { type: integer, minimum: 0 }
+    UpdateFileRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        fileName: { type: string, minLength: 1, maxLength: 200 }
+        folderId: { type: string, format: uuid }
+        categoryId: { type: string, format: uuid }
+    PrecheckRequest:
+      type: object
+      required: [projectId, folderId, fileName, sizeBytes, clientFingerprint]
+      additionalProperties: false
+      properties:
+        projectId: { type: string, format: uuid }
+        folderId: { type: string, format: uuid }
+        fileName: { type: string, minLength: 1, maxLength: 200 }
+        sizeBytes: { type: integer, minimum: 1, maximum: 21474836480 }
+        sha256: { type: string, pattern: '^[a-f0-9]{64}$' }
+        clientFingerprint: { type: string, maxLength: 128 }
+    PrecheckResult:
+      oneOf:
+        - type: object
+          required: [kind, fileId, objectId]
+          properties:
+            kind: { const: instant }
+            fileId: { type: string, format: uuid }
+            objectId: { type: string }
+        - type: object
+          required: [kind, sessionId, receivedChunks]
+          properties:
+            kind: { const: resume }
+            sessionId: { type: string, format: uuid }
+            receivedChunks:
+              type: array
+              items: { type: integer, minimum: 0 }
+        - type: object
+          required: [kind, sessionId, chunkSize, chunkCount, expiresAt]
+          properties:
+            kind: { const: new }
+            sessionId: { type: string, format: uuid }
+            chunkSize: { type: integer }
+            chunkCount: { type: integer }
+            expiresAt: { type: string, format: date-time }
+    UploadSession:
+      type: object
+      required: [sessionId, status, receivedChunks, receivedBytes]
+      properties:
+        sessionId: { type: string, format: uuid }
+        status: { type: string, enum: [init, uploading, merging, completed, expired, failed] }
+        receivedChunks:
+          type: array
+          items: { type: integer, minimum: 0 }
+        receivedBytes: { type: integer, minimum: 0 }
+        expiresAt: { type: string, format: date-time }
+    ChunkReceipt:
+      type: object
+      required: [chunkIndex, receivedBytes]
+      properties:
+        chunkIndex: { type: integer, minimum: 0 }
+        receivedBytes: { type: integer, minimum: 0 }
+    CompleteUploadRequest:
+      type: object
+      required: [sha256]
+      additionalProperties: false
+      properties:
+        sha256: { type: string, pattern: '^[a-f0-9]{64}$' }
+    JobAccepted:
+      type: object
+      required: [status, statusUrl]
+      properties:
+        status: { type: string }
+        statusUrl: { type: string }
+        queuePosition: { type: integer, minimum: 0 }
+        etaSeconds: { type: integer, minimum: 0 }
+    CreateBundleRequest:
+      type: object
+      required: [fileIds]
+      additionalProperties: false
+      properties:
+        fileIds:
+          type: array
+          maxItems: 200
+          items: { type: string, format: uuid }
+        folderIds:
+          type: array
+          maxItems: 50
+          items: { type: string, format: uuid }
+    Bundle:
+      type: object
+      required: [bundleId, status, totalBytes, chunkedRanges]
+      properties:
+        bundleId: { type: string, format: uuid }
+        status: { type: string, enum: [queued, building, ready, failed, expired] }
+        totalBytes: { type: integer, minimum: 0 }
+        chunkedRanges: { type: boolean }
+        statusUrl: { type: string }
+    TrashEntry:
+      type: object
+      required: [trashId, resourceType, resourceId, deletedAt, expireAt]
+      properties:
+        trashId: { type: string, format: uuid }
+        resourceType: { type: string, enum: [file, folder] }
+        resourceId: { type: string, format: uuid }
+        originalFolderId: { type: string, format: uuid }
+        deletedAt: { type: string, format: date-time }
+        expireAt: { type: string, format: date-time }
+    SearchResult:
+      type: object
+      required: [items, total, asOf]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/File' }
+        total: { type: integer, minimum: 0 }
+        asOf: { type: string, format: date-time }
+        truncated: { type: boolean }
+    ProjectStats:
+      type: object
+      required: [projectId, generatedAt, categories]
+      properties:
+        projectId: { type: string, format: uuid }
+        generatedAt: { type: string, format: date-time }
+        categories:
+          type: array
+          items:
+            type: object
+            required: [categoryId, count, totalBytes]
+            properties:
+              categoryId: { type: string, format: uuid }
+              count: { type: integer, minimum: 0 }
+              totalBytes: { type: integer, minimum: 0 }
+        trashCount: { type: integer, minimum: 0 }
+        trashBytes: { type: integer, minimum: 0 }
+    CreateStatsExportRequest:
+      type: object
+      required: [dims]
+      additionalProperties: false
+      properties:
+        dims:
+          type: array
+          minItems: 1
+          items: { type: string, enum: [project, category, uploader] }
+        projectId: { type: string, format: uuid }
+        from: { type: string, format: date-time }
+        to: { type: string, format: date-time }
+    StatsExport:
+      type: object
+      required: [exportId, status]
+      properties:
+        exportId: { type: string, format: uuid }
+        status: { type: string, enum: [queued, building, ready, failed] }
+        statusUrl: { type: string }
+    AuditEntry:
+      type: object
+      required: [auditId, action, result, occurredAt, requestId]
+      properties:
+        auditId: { type: string, format: uuid }
+        actorId: { type: string, format: uuid }
+        actorRole: { $ref: '#/components/schemas/RoleCode' }
+        action: { type: string }
+        objectType: { type: string }
+        objectId: { type: string }
+        result: { type: string, enum: [success, denied, failed] }
+        reason: { type: string }
+        sourceIp: { type: string }
+        occurredAt: { type: string, format: date-time }
+        requestId: { type: string }
+    AuditPage:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/AuditEntry' }
+        total: { type: integer, minimum: 0 }
+    CreateImportJobRequest:
+      type: object
+      required: [projectId, sourceMode]
+      additionalProperties: false
+      properties:
+        projectId: { type: string, format: uuid }
+        sourceMode: { type: string, enum: [web, cli] }
+        rootName: { type: string, maxLength: 200 }
+    ImportJob:
+      type: object
+      required: [jobId, status, succeeded, skipped, failed]
+      properties:
+        jobId: { type: string, format: uuid }
+        status: { type: string, enum: [queued, running, completed, failed] }
+        succeeded: { type: integer, minimum: 0 }
+        skipped: { type: integer, minimum: 0 }
+        failed: { type: integer, minimum: 0 }
+        statusUrl: { type: string }
+    Health:
+      type: object
+      required: [status, uptimeSeconds]
+      properties:
+        status: { type: string }
+        uptimeSeconds: { type: integer, minimum: 0 }
+        storageVolumeFreeBytes: { type: integer }
+        activeSessions: { type: integer, minimum: 0 }
+        errorsLast24h: { type: integer, minimum: 0 }
+        lastJobs:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              lastRunAt: { type: string, format: date-time }
+              result: { type: string }
+    Settings:
+      type: object
+      properties:
+        maxUploadBytes: { type: integer, minimum: 1 }
+        chunkSizeBytes: { type: integer, minimum: 1048576 }
+        trashRetentionDays: { type: integer, minimum: 10 }
+        instantUploadEnabled: { type: boolean }
+    SettingsPatch:
+      type: object
+      additionalProperties: false
+      properties:
+        maxUploadBytes: { type: integer, minimum: 1 }
+        chunkSizeBytes: { type: integer, minimum: 1048576 }
+        instantUploadEnabled: { type: boolean }

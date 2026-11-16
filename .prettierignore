@@ -1,0 +1,12 @@
+_private
+node_modules
+dist
+build
+coverage
+releases
+runtime
+data
+logs
+package-lock.json
+pnpm-lock.yaml
+*.min.js
