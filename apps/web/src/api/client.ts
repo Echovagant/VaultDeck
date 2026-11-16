@@ -96,6 +96,7 @@ export interface FileItem {
   contentType: string;
   uploaderId: string;
   createdAt: string;
+  hasContent?: boolean;
 }
 
 export function formatBytes(bytes: number): string {

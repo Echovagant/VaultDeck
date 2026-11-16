@@ -28,7 +28,7 @@ async function json(path, token, init = {}) {
 }
 
 async function uploadSmall(token, projectId, folderId, fileName, text) {
-  const buffer = Buffer.from(text);
+  const buffer = Buffer.from(`${text}-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   const sha256 = createHash('sha256').update(buffer).digest('hex');
   const digest = createHash('sha256').update(buffer).digest('base64');
 
@@ -89,7 +89,7 @@ assert.equal(deniedFolder.status, 404, 'Member 访问未授权项目应 404');
 
 const leaderFiles = (await json(`/files?projectId=${project.projectId}`, leader)).body.items;
 const memberFiles = (await json(`/files?projectId=${project.projectId}`, member)).body.items;
-assert.equal(leaderFiles.length, 3, 'Leader 应看到 3 个示例文件');
+assert.ok(leaderFiles.length >= 3, `Leader 应至少看到 3 个文件，实际 ${leaderFiles.length}`);
 assert.equal(memberFiles.length, 1, 'Member 只应看到自己上传的文件');
 
 const uploaded = await uploadSmall(

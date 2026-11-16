@@ -1,6 +1,9 @@
+import { message } from 'ant-design-vue';
 import { createRouter, createWebHistory } from 'vue-router';
 
 import { useSessionStore } from '@/stores/session';
+
+type Role = 'LEADER' | 'DEPUTY_LEADER' | 'MEMBER';
 
 const routes = [
   {
@@ -31,16 +34,19 @@ const routes = [
     path: '/stats',
     name: 'stats',
     component: () => import('@/pages/stats/index.vue'),
+    meta: { roles: ['LEADER', 'DEPUTY_LEADER'] satisfies Role[] },
   },
   {
     path: '/categories',
     name: 'categories',
     component: () => import('@/pages/categories/index.vue'),
+    meta: { roles: ['LEADER'] satisfies Role[] },
   },
   {
     path: '/settings',
     name: 'settings',
     component: () => import('@/pages/settings/index.vue'),
+    meta: { roles: ['LEADER'] satisfies Role[] },
   },
   {
     path: '/trash',
@@ -51,11 +57,13 @@ const routes = [
     path: '/audit',
     name: 'audit',
     component: () => import('@/pages/audit/index.vue'),
+    meta: { roles: ['LEADER', 'DEPUTY_LEADER'] satisfies Role[] },
   },
   {
     path: '/admin',
     name: 'admin',
     component: () => import('@/pages/admin/index.vue'),
+    meta: { roles: ['LEADER'] satisfies Role[] },
   },
 ];
 
@@ -74,5 +82,12 @@ router.beforeEach(async (to) => {
   if (to.path === '/login' && session.user) {
     return { path: '/projects' };
   }
+
+  const roles = to.meta['roles'] as Role[] | undefined;
+  if (roles && session.user && !roles.includes(session.user.role as Role)) {
+    message.warning('当前账号无权访问该页面');
+    return { path: '/projects' };
+  }
+
   return true;
 });

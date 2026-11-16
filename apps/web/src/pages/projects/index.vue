@@ -5,7 +5,9 @@
         <h1 class="vd-page-title">项目</h1>
         <p class="vd-page-sub">按项目归档资料；领队可查看全部项目</p>
       </div>
-      <a-button type="primary" @click="openCreate">新建项目</a-button>
+      <a-button v-if="session.user?.role === 'LEADER'" type="primary" @click="openCreate">
+        新建项目
+      </a-button>
     </div>
 
     <a-table
@@ -51,8 +53,10 @@ import { onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { ApiError, api, formatBytes, type ProjectSummary } from '@/api/client';
+import { useSessionStore } from '@/stores/session';
 
 const router = useRouter();
+const session = useSessionStore();
 const projects = ref<ProjectSummary[]>([]);
 const loading = ref(false);
 const saving = ref(false);

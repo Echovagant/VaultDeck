@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 
 const BASE = 'http://127.0.0.1:3000/api/v1';
 
@@ -28,7 +28,7 @@ const folderId = folders.items[0].folderId;
 
 const size = 20 * 1024 * 1024 + 123;
 const payload = Buffer.alloc(size);
-for (let index = 0; index < size; index += 4096) payload[index] = index % 251;
+randomBytes(64).copy(payload, 0);
 const sha256 = createHash('sha256').update(payload).digest('hex');
 
 const precheck = await fetch(`${BASE}/upload-sessions/precheck`, {

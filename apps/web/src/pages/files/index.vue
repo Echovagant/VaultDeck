@@ -4,7 +4,7 @@
       <div class="aside-search">
         <a-input
           v-model:value="folderSearch"
-          placeholder="请输入文件夹名称"
+          placeholder="搜索文件夹或文件名"
           allow-clear
           @press-enter="searchFolders"
         />
@@ -68,7 +68,9 @@
             <template #overlay>
               <a-menu @click="onCreateMenu">
                 <a-menu-item key="folder">新建文件夹</a-menu-item>
-                <a-menu-item key="project">新建项目</a-menu-item>
+                <a-menu-item v-if="session.user?.role === 'LEADER'" key="project">
+                  新建项目
+                </a-menu-item>
               </a-menu>
             </template>
           </a-dropdown>
@@ -120,10 +122,11 @@
           v-for="file in visibleFiles"
           :key="file.fileId"
           class="grid-card"
-          @click="openPreview(file)"
+          @click="onFileClick(file)"
         >
           <FileOutlined class="file-icon" />
           <span class="grid-name" :title="file.fileName">{{ file.fileName }}</span>
+          <span v-if="file.hasContent === false" class="sample-badge">示例</span>
         </div>
         <a-empty
           v-if="visibleFolders.length === 0 && visibleFiles.length === 0"
@@ -149,8 +152,16 @@
             {{ new Date(record.createdAt).toLocaleString() }}
           </template>
           <template v-else-if="column.key === 'actions'">
-            <a-button type="link" @click="openPreview(record)">预览</a-button>
-            <a-button type="link" @click="download(record)">下载</a-button>
+            <a-button
+              type="link"
+              :disabled="record.hasContent === false"
+              @click="openPreview(record)"
+            >
+              预览
+            </a-button>
+            <a-button type="link" :disabled="record.hasContent === false" @click="download(record)">
+              下载
+            </a-button>
             <a-button type="link" danger @click="remove(record)">删除</a-button>
           </template>
         </template>
@@ -261,6 +272,7 @@ import FolderTree from '@/features/folders/FolderTree.vue';
 import FilePreviewDialog from '@/features/preview/FilePreviewDialog.vue';
 import { importDirectory, type ImportResult } from '@/features/upload/directory-importer';
 import { uploadFile } from '@/features/upload/uploader';
+import { useSessionStore } from '@/stores/session';
 import { useTabsStore } from '@/stores/tabs';
 
 interface FolderHit {
@@ -282,6 +294,7 @@ interface CategoryItem {
 const route = useRoute();
 const router = useRouter();
 const tabsStore = useTabsStore();
+const session = useSessionStore();
 const projectId = String(route.params.projectId ?? '');
 
 const projectName = ref('');
@@ -297,6 +310,8 @@ const searching = ref(false);
 
 const folderFilter = ref('');
 const typeFilter = ref('all');
+const appliedFolderFilter = ref('');
+const appliedTypeFilter = ref('all');
 const viewMode = ref<'grid' | 'list'>('grid');
 const categories = ref<CategoryItem[]>([]);
 
@@ -384,12 +399,12 @@ function extensionOf(name: string): string {
 }
 
 function matchesType(name: string): boolean {
-  if (typeFilter.value === 'all') return true;
+  if (appliedTypeFilter.value === 'all') return true;
 
   const extension = extensionOf(name);
 
   if (categories.value.length > 0) {
-    const category = categories.value.find((item) => item.categoryId === typeFilter.value);
+    const category = categories.value.find((item) => item.categoryId === appliedTypeFilter.value);
     if (!category) return true;
     if (category.categoryCode === 'OTHER') {
       return !categories.value.some(
@@ -399,18 +414,18 @@ function matchesType(name: string): boolean {
     return category.extensions.includes(extension);
   }
 
-  if (typeFilter.value === 'other') {
+  if (appliedTypeFilter.value === 'other') {
     return !Object.values(FALLBACK_EXTENSIONS).some((list) => list.includes(extension));
   }
-  return (FALLBACK_EXTENSIONS[typeFilter.value] ?? []).includes(extension);
+  return (FALLBACK_EXTENSIONS[appliedTypeFilter.value] ?? []).includes(extension);
 }
 
 const visibleFolders = computed(() =>
   folders.value.filter(
     (folder) =>
       folder.parentId === (folderId.value ?? null) &&
-      (folderFilter.value.trim().length === 0 ||
-        folder.folderName.toLowerCase().includes(folderFilter.value.trim().toLowerCase())),
+      (appliedFolderFilter.value.trim().length === 0 ||
+        folder.folderName.toLowerCase().includes(appliedFolderFilter.value.trim().toLowerCase())),
   ),
 );
 
@@ -440,12 +455,15 @@ const breadcrumb = computed(() => {
 });
 
 function applyFilter(): void {
-  // 计算属性已响应式过滤，这里保留按钮语义
+  appliedFolderFilter.value = folderFilter.value;
+  appliedTypeFilter.value = typeFilter.value;
 }
 
 function resetFilter(): void {
   folderFilter.value = '';
   typeFilter.value = 'all';
+  appliedFolderFilter.value = '';
+  appliedTypeFilter.value = 'all';
 }
 
 function onTreeSelect(id: string | null): void {
@@ -509,13 +527,15 @@ function clearTabs(): void {
   void router.push('/projects');
 }
 
-async function loadProject(): Promise<void> {
+async function loadProject(): Promise<boolean> {
   try {
     const result = await api<{ items: ProjectSummary[] }>('/projects');
     const found = result.items.find((item) => item.projectId === projectId);
     projectName.value = found?.projectName ?? '';
+    return Boolean(found);
   } catch {
     projectName.value = '';
+    return false;
   }
 }
 
@@ -697,11 +717,15 @@ async function onDirPicked(event: Event): Promise<void> {
 }
 
 async function bundleDownload(): Promise<void> {
-  if (selectedFiles.value.length === 0) return;
+  const ready = selectedFiles.value.filter((file) => file.hasContent !== false);
+  if (ready.length === 0) {
+    message.warning('所选文件没有实际内容，无法打包');
+    return;
+  }
   try {
     const result = await api<{ bundleId: string }>('/bundles', {
       method: 'POST',
-      body: JSON.stringify({ fileIds: selectedFiles.value.map((file) => file.fileId) }),
+      body: JSON.stringify({ fileIds: ready.map((file) => file.fileId) }),
     });
     const token = getToken();
     const response = await fetch(`/api/v1/bundles/${result.bundleId}/content`, {
@@ -749,9 +773,31 @@ async function remove(file: FileItem): Promise<void> {
   }
 }
 
+function onFileClick(file: FileItem): void {
+  if (file.hasContent === false) {
+    message.info('示例文件没有实际内容，无法预览');
+    return;
+  }
+  openPreview(file);
+}
+
 function openPreview(file: FileItem): void {
   previewFile.value = file;
   previewVisible.value = true;
+}
+
+async function onMountedLoad(): Promise<void> {
+  const exists = await loadProject();
+  if (!exists) {
+    tabsStore.remove(projectId);
+    message.warning('项目不存在或无权访问');
+    await router.replace('/projects');
+    return;
+  }
+
+  tabsStore.add(projectId, projectName.value || '项目资料');
+  await loadCategories();
+  await loadAll();
 }
 
 onMounted(async () => {
@@ -759,11 +805,7 @@ onMounted(async () => {
   if (typeof queryFolderId === 'string' && queryFolderId.length > 0) {
     folderId.value = queryFolderId;
   }
-
-  await loadProject();
-  tabsStore.add(projectId, projectName.value || '项目资料');
-  await loadCategories();
-  await loadAll();
+  await onMountedLoad();
 });
 </script>
 
@@ -907,6 +949,14 @@ onMounted(async () => {
   text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.sample-badge {
+  padding: 0 6px;
+  border-radius: 6px;
+  background: #f5f5f7;
+  color: var(--vd-text-secondary);
+  font-size: 11px;
 }
 
 .empty-block {

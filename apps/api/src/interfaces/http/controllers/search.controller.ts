@@ -52,6 +52,7 @@ export class SearchController {
           folderId: file.folderId,
           uploaderId: file.uploaderId,
           createdAt: file.createdAt,
+          hasContent: file.objectPath.length > 0,
         });
       }
     }

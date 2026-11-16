@@ -32,7 +32,7 @@
             <template #icon><SettingOutlined /></template>
             设置
           </a-menu-item>
-          <a-menu-item key="/admin">
+          <a-menu-item v-if="isLeader" key="/admin">
             <template #icon><TeamOutlined /></template>
             后台
           </a-menu-item>
@@ -63,7 +63,7 @@
         </a-layout-header>
 
         <a-layout-content :class="session.user ? 'vd-content' : 'vd-content-full'">
-          <router-view />
+          <router-view :key="route.fullPath" />
         </a-layout-content>
 
         <a-layout-footer v-if="session.user" class="vd-footer">

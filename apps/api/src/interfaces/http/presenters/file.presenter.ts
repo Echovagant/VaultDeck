@@ -1,8 +1,8 @@
 import type { StoreFile } from '../../../application/ports/store.port';
 
-export type PublicFile = Omit<StoreFile, 'objectPath'>;
+export type PublicFile = Omit<StoreFile, 'objectPath'> & { hasContent: boolean };
 
 export function toPublicFile(file: StoreFile): PublicFile {
-  const { objectPath: _objectPath, ...rest } = file;
-  return rest;
+  const { objectPath, ...rest } = file;
+  return { ...rest, hasContent: objectPath.length > 0 };
 }

@@ -27,8 +27,16 @@
           {{ new Date(record.createdAt).toLocaleString() }}
         </template>
         <template v-else-if="column.key === 'actions'">
-          <a-button type="link" @click="openPreview(record)">预览</a-button>
-          <a-button type="link" @click="download(record)">下载</a-button>
+          <a-button
+            type="link"
+            :disabled="record.hasContent === false"
+            @click="openPreview(record)"
+          >
+            预览
+          </a-button>
+          <a-button type="link" :disabled="record.hasContent === false" @click="download(record)">
+            下载
+          </a-button>
           <a-button type="link" @click="openProject(record)">进入项目</a-button>
         </template>
       </template>
@@ -58,6 +66,7 @@ interface SearchItem {
   projectId: string;
   projectName: string;
   createdAt: string;
+  hasContent?: boolean;
 }
 
 const route = useRoute();
