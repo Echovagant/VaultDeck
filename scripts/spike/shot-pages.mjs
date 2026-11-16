@@ -109,7 +109,7 @@ try {
     mobile: false,
   });
   await client.send('Page.navigate', { url: `${APP}/login` });
-  await wait(1800);
+  await wait(2600);
   await client.send('Runtime.evaluate', {
     expression: `localStorage.setItem('vd_token', ${JSON.stringify(
       token,
@@ -119,6 +119,8 @@ try {
   const pages = [
     { name: 'projects', path: '/projects' },
     { name: 'files', path: `/projects/${project.projectId}/files` },
+    { name: 'settings', path: '/settings', desktopOnly: true },
+    { name: 'trash', path: '/trash', desktopOnly: true },
   ];
 
   const viewports = [
@@ -130,6 +132,7 @@ try {
 
   for (const target of pages) {
     for (const viewport of viewports) {
+      if (target.desktopOnly && viewport.label !== 'desktop') continue;
       await client.send('Emulation.setDeviceMetricsOverride', {
         width: viewport.width,
         height: viewport.height,
@@ -137,7 +140,17 @@ try {
         mobile: false,
       });
       await client.send('Page.navigate', { url: `${APP}${target.path}` });
-      await wait(900);
+      await wait(500);
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        const readiness = await client.send('Runtime.evaluate', {
+          expression:
+            'Boolean(document.querySelector(".vd-sider") || document.querySelector(".login-page"))',
+          returnByValue: true,
+        });
+        if (readiness.result.result.value) break;
+        await wait(300);
+      }
+      await wait(500);
       await client.send('Runtime.evaluate', {
         expression: 'window.dispatchEvent(new Event("resize")); "ok"',
       });
@@ -155,17 +168,15 @@ try {
         `${viewport.label}/${target.name} -> ${file} (docH=${value.doc} winH=${value.win} bodyH=${value.body})`,
       );
 
-      if (target.name === 'files' && viewport.label === 'phone') {
+      if (target.name === 'files' && (viewport.label === 'phone' || viewport.label === 'desktop')) {
         await client.send('Runtime.evaluate', {
           expression: `document.querySelectorAll('.ant-segmented-item')[1]?.click(); 'ok'`,
         });
         await wait(700);
         const listShot = await client.send('Page.captureScreenshot', { format: 'png' });
-        writeFileSync(
-          path.join(OUT_DIR, 'phone-files-list.png'),
-          Buffer.from(listShot.result.data, 'base64'),
-        );
-        console.log('phone/files-list -> phone-files-list.png');
+        const listFile = path.join(OUT_DIR, `${viewport.label}-files-list.png`);
+        writeFileSync(listFile, Buffer.from(listShot.result.data, 'base64'));
+        console.log(`${viewport.label}/files-list -> ${listFile}`);
       }
     }
   }

@@ -16,23 +16,25 @@
         <a-button type="primary" :loading="searching" @click="searchFolders">查询</a-button>
       </div>
 
-      <div v-if="folderHits.length > 0" class="hit-list">
-        <div class="hit-head">
-          <span>搜索结果 {{ folderHits.length }} 个</span>
-          <a-button type="link" size="small" @click="clearFolderSearch">返回目录</a-button>
+      <div class="aside-tree">
+        <div v-if="folderHits.length > 0" class="hit-list">
+          <div class="hit-head">
+            <span>搜索结果 {{ folderHits.length }} 个</span>
+            <a-button type="link" size="small" @click="clearFolderSearch">返回目录</a-button>
+          </div>
+          <div v-for="hit in folderHits" :key="hit.folderId" class="hit-item" @click="openHit(hit)">
+            <div class="hit-name">{{ hit.folderName }}</div>
+            <div class="hit-path">{{ hit.projectName }} · {{ hit.path }}</div>
+          </div>
         </div>
-        <div v-for="hit in folderHits" :key="hit.folderId" class="hit-item" @click="openHit(hit)">
-          <div class="hit-name">{{ hit.folderName }}</div>
-          <div class="hit-path">{{ hit.projectName }} · {{ hit.path }}</div>
-        </div>
-      </div>
 
-      <FolderTree
-        v-else
-        :folders="folders"
-        :selected-id="folderId ?? null"
-        @select="onTreeSelect"
-      />
+        <FolderTree
+          v-else
+          :folders="folders"
+          :selected-id="folderId ?? null"
+          @select="onTreeSelect"
+        />
+      </div>
     </aside>
 
     <main class="files-main">
@@ -124,111 +126,117 @@
         </a-breadcrumb>
       </section>
 
-      <div v-if="uploading" class="progress-box">
-        <a-progress :percent="percent" :status="percent === 100 ? 'success' : 'active'" />
-        <p class="phase">{{ currentFileName }} · {{ phase }}</p>
-      </div>
-
-      <div v-if="viewMode === 'grid'" class="grid-area">
-        <div
-          v-for="folder in visibleFolders"
-          :key="folder.folderId"
-          class="grid-card grid-folder"
-          @dblclick="onTreeSelect(folder.folderId)"
-        >
-          <FolderFilled class="folder-icon" />
-          <span class="grid-name" :title="folder.folderName">{{ folder.folderName }}</span>
-          <span class="grid-meta vd-mono">FOLDER</span>
+      <div class="files-body">
+        <div v-if="uploading" class="progress-box">
+          <a-progress :percent="percent" :status="percent === 100 ? 'success' : 'active'" />
+          <p class="phase">{{ currentFileName }} · {{ phase }}</p>
         </div>
-        <div
-          v-for="file in visibleFiles"
-          :key="file.fileId"
-          class="grid-card"
-          @click="onFileClick(file)"
-        >
-          <FileOutlined class="file-icon" :style="{ color: fileTone(file.fileName) }" />
-          <span class="grid-name" :title="file.fileName">{{ file.fileName }}</span>
-          <span class="grid-meta vd-mono">{{ formatBytes(file.sizeBytes) }}</span>
-          <span v-if="file.hasContent === false" class="sample-badge">示例</span>
-        </div>
-        <a-empty
-          v-if="visibleFolders.length === 0 && visibleFiles.length === 0"
-          description="暂无资料"
-          class="empty-block"
-        />
-      </div>
 
-      <div v-else-if="isNarrow" class="file-cards">
-        <article v-for="file in visibleFiles" :key="file.fileId" class="file-card">
-          <div class="file-card-main" @click="onFileClick(file)">
-            <FileOutlined class="file-card-icon" :style="{ color: fileTone(file.fileName) }" />
-            <div class="file-card-text">
-              <span class="file-card-name" :title="file.fileName">{{ file.fileName }}</span>
-              <span class="file-card-meta vd-mono">{{ formatBytes(file.sizeBytes) }}</span>
-            </div>
+        <div v-if="viewMode === 'grid'" class="grid-area">
+          <div
+            v-for="folder in visibleFolders"
+            :key="folder.folderId"
+            class="grid-card grid-folder"
+            @dblclick="onTreeSelect(folder.folderId)"
+          >
+            <FolderFilled class="folder-icon" />
+            <span class="grid-name" :title="folder.folderName">{{ folder.folderName }}</span>
+            <span class="grid-meta vd-mono">FOLDER</span>
+          </div>
+          <div
+            v-for="file in visibleFiles"
+            :key="file.fileId"
+            class="grid-card"
+            @click="onFileClick(file)"
+          >
+            <FileOutlined class="file-icon" :style="{ color: fileTone(file.fileName) }" />
+            <span class="grid-name" :title="file.fileName">{{ file.fileName }}</span>
+            <span class="grid-meta vd-mono">{{ formatBytes(file.sizeBytes) }}</span>
             <span v-if="file.hasContent === false" class="sample-badge">示例</span>
           </div>
-          <div class="file-card-actions">
-            <a-button
-              type="link"
-              size="small"
-              :disabled="file.hasContent === false"
-              @click="openPreview(file)"
-            >
-              预览
-            </a-button>
-            <a-button
-              type="link"
-              size="small"
-              :disabled="file.hasContent === false"
-              @click="download(file)"
-            >
-              下载
-            </a-button>
-            <a-button type="link" size="small" danger @click="remove(file)">删除</a-button>
-          </div>
-        </article>
+          <a-empty
+            v-if="visibleFolders.length === 0 && visibleFiles.length === 0"
+            description="暂无资料"
+            class="empty-block"
+          />
+        </div>
+
+        <div v-else-if="isNarrow" class="file-cards">
+          <article v-for="file in visibleFiles" :key="file.fileId" class="file-card">
+            <div class="file-card-main" @click="onFileClick(file)">
+              <FileOutlined class="file-card-icon" :style="{ color: fileTone(file.fileName) }" />
+              <div class="file-card-text">
+                <span class="file-card-name" :title="file.fileName">{{ file.fileName }}</span>
+                <span class="file-card-meta vd-mono">{{ formatBytes(file.sizeBytes) }}</span>
+              </div>
+              <span v-if="file.hasContent === false" class="sample-badge">示例</span>
+            </div>
+            <div class="file-card-actions">
+              <a-button
+                type="link"
+                size="small"
+                :disabled="file.hasContent === false"
+                @click="openPreview(file)"
+              >
+                预览
+              </a-button>
+              <a-button
+                type="link"
+                size="small"
+                :disabled="file.hasContent === false"
+                @click="download(file)"
+              >
+                下载
+              </a-button>
+              <a-button type="link" size="small" danger @click="remove(file)">删除</a-button>
+            </div>
+          </article>
+        </div>
+
+        <a-table
+          v-else
+          :columns="columns"
+          :data-source="visibleFiles"
+          :loading="loading"
+          :pagination="false"
+          row-key="fileId"
+          :row-selection="rowSelection"
+        >
+          <template #bodyCell="{ column, record }">
+            <template v-if="column.key === 'sizeBytes'">
+              {{ formatBytes(record.sizeBytes) }}
+            </template>
+            <template v-else-if="column.key === 'createdAt'">
+              {{ new Date(record.createdAt).toLocaleString() }}
+            </template>
+            <template v-else-if="column.key === 'extension'">
+              <span class="file-type">{{ fileExtension(record.fileName) }}</span>
+            </template>
+            <template v-else-if="column.key === 'actions'">
+              <div class="row-actions">
+                <a-button
+                  type="link"
+                  :disabled="record.hasContent === false"
+                  @click="openPreview(record)"
+                >
+                  预览
+                </a-button>
+                <a-button
+                  type="link"
+                  :disabled="record.hasContent === false"
+                  @click="download(record)"
+                >
+                  下载
+                </a-button>
+                <a-button type="link" danger @click="remove(record)">删除</a-button>
+              </div>
+            </template>
+          </template>
+        </a-table>
       </div>
 
-      <a-table
-        v-else
-        :columns="columns"
-        :data-source="visibleFiles"
-        :loading="loading"
-        :pagination="false"
-        row-key="fileId"
-        :row-selection="rowSelection"
-      >
-        <template #bodyCell="{ column, record }">
-          <template v-if="column.key === 'sizeBytes'">
-            {{ formatBytes(record.sizeBytes) }}
-          </template>
-          <template v-else-if="column.key === 'createdAt'">
-            {{ new Date(record.createdAt).toLocaleString() }}
-          </template>
-          <template v-else-if="column.key === 'actions'">
-            <a-button
-              type="link"
-              :disabled="record.hasContent === false"
-              @click="openPreview(record)"
-            >
-              预览
-            </a-button>
-            <a-button type="link" :disabled="record.hasContent === false" @click="download(record)">
-              下载
-            </a-button>
-            <a-button type="link" danger @click="remove(record)">删除</a-button>
-          </template>
-        </template>
-      </a-table>
-
       <div class="files-bottom">
-        <a-button
-          type="primary"
-          ghost
-          :disabled="selectedFiles.length === 0"
-          @click="bundleDownload"
-        >
+        <a-button :disabled="selectedFiles.length === 0" @click="bundleDownload">
           打包下载{{ selectedFiles.length > 0 ? `（${selectedFiles.length}）` : '' }}
         </a-button>
         <span class="files-count">
@@ -367,6 +375,12 @@ function fileTone(fileName: string): string {
   return TYPE_TONE[ext] ?? '#7a6e60';
 }
 
+function fileExtension(fileName: string): string {
+  const dot = fileName.lastIndexOf('.');
+  if (dot <= 0 || dot === fileName.length - 1) return '—';
+  return fileName.slice(dot + 1).toUpperCase();
+}
+
 interface FolderHit {
   folderId: string;
   folderName: string;
@@ -461,7 +475,7 @@ const viewOptions = [
 const columns = [
   { title: '文件名', dataIndex: 'fileName', key: 'fileName' },
   { title: '大小', key: 'sizeBytes', width: 120 },
-  { title: '类型', dataIndex: 'contentType', key: 'contentType', width: 190 },
+  { title: '类型', key: 'extension', width: 110 },
   { title: '上传时间', key: 'createdAt', width: 190 },
   { title: '操作', key: 'actions', width: 200 },
 ];
@@ -910,17 +924,30 @@ onMounted(async () => {
 
 <style scoped>
 .files-layout {
-  display: grid;
-  grid-template-columns: 280px minmax(0, 1fr);
-  gap: 20px;
-  align-items: start;
+  display: flex;
+  flex: 1;
+  gap: 12px;
+  min-height: 0;
+  align-items: stretch;
 }
 
 .files-aside {
-  padding: 16px 14px;
+  display: flex;
+  flex: 0 0 264px;
+  flex-direction: column;
+  width: 264px;
+  height: 100%;
+  padding: 14px 12px;
+  overflow: hidden;
   background: var(--vd-surface);
   border: 1px solid var(--vd-border);
   border-radius: var(--vd-radius);
+}
+
+.aside-tree {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .aside-head {
@@ -942,7 +969,7 @@ onMounted(async () => {
 .aside-search {
   display: flex;
   gap: 8px;
-  margin-bottom: 14px;
+  margin-bottom: 10px;
 }
 
 .hit-list {
@@ -989,16 +1016,32 @@ onMounted(async () => {
 }
 
 .files-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
   min-width: 0;
+  min-height: 0;
 }
 
 .files-panel {
-  margin-bottom: 16px;
+  flex: 0 0 auto;
+  margin-bottom: 12px;
   padding-top: 4px;
   background: var(--vd-surface);
   border: 1px solid var(--vd-border);
   border-radius: var(--vd-radius);
   overflow: hidden;
+}
+
+.files-body {
+  flex: 1;
+  min-height: 0;
+  padding-right: 4px;
+  overflow-y: auto;
+}
+
+.files-body :deep(.ant-table-wrapper) {
+  min-height: 100%;
 }
 
 .files-panel :deep(.ant-tabs-nav) {
@@ -1031,8 +1074,8 @@ onMounted(async () => {
   padding-left: 0;
 }
 
-.files-layout.aside-collapsed {
-  grid-template-columns: minmax(0, 1fr);
+.files-layout.aside-collapsed .files-aside {
+  display: none;
 }
 
 .files-title {
@@ -1050,18 +1093,18 @@ onMounted(async () => {
 
 .grid-area {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(146px, 1fr));
-  gap: 12px;
-  min-height: 200px;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: 10px;
+  min-height: 0;
 }
 
 .grid-card {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 7px;
-  min-height: 130px;
-  padding: 16px 12px 12px;
+  gap: 4px;
+  min-height: 104px;
+  padding: 12px 10px 10px;
   background: var(--vd-surface);
   border: 1px solid var(--vd-border);
   border-radius: var(--vd-radius);
@@ -1090,12 +1133,12 @@ onMounted(async () => {
 }
 
 .folder-icon {
-  font-size: 40px;
+  font-size: 32px;
   color: var(--vd-ochre);
 }
 
 .file-icon {
-  font-size: 38px;
+  font-size: 30px;
   color: var(--vd-text-secondary);
 }
 
@@ -1189,9 +1232,26 @@ onMounted(async () => {
 
 .files-bottom {
   display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 2px 0;
+  margin-top: 8px;
+  background: var(--vd-paper);
+  border-top: 1px solid var(--vd-border);
+}
+
+.row-actions {
+  display: flex;
   align-items: center;
   gap: 14px;
-  margin-top: 18px;
+}
+
+.file-type {
+  color: var(--vd-text-secondary);
+  font-family: var(--vd-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
 }
 
 .files-count {
@@ -1200,10 +1260,6 @@ onMounted(async () => {
 }
 
 @media (max-width: 1180px) {
-  .files-layout {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
   .files-aside {
     display: none;
   }

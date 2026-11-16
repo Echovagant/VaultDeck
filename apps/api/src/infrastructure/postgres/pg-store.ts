@@ -185,6 +185,14 @@ export class PgStore implements StorePort {
     return row ? mapUser(row) : null;
   }
 
+  async countActiveSessions(): Promise<number> {
+    const result = await this.pool.query<{ count: number }>(
+      `SELECT count(*)::int AS count FROM user_session
+       WHERE revoked_at IS NULL AND expires_at > now()`,
+    );
+    return result.rows[0]?.count ?? 0;
+  }
+
   async listUsers(): Promise<StoreUser[]> {
     const result = await this.pool.query<UserRow>('SELECT * FROM app_user ORDER BY username');
     return result.rows.map(mapUser);

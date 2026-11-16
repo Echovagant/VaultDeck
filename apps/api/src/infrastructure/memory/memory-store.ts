@@ -94,6 +94,10 @@ class MemoryStore implements StorePort {
     return record ? this.toStoreUser(record) : null;
   }
 
+  async countActiveSessions(): Promise<number> {
+    return this.sessions.size;
+  }
+
   async listUsers(): Promise<StoreUser[]> {
     return [...this.users.values()].map((record) => this.toStoreUser(record));
   }

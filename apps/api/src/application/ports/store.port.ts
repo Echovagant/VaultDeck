@@ -163,6 +163,7 @@ export interface StorePort {
   login(username: string, password: string): Promise<StoreLoginResult | null>;
   logout(token: string): Promise<void>;
   userByToken(token: string): Promise<StoreUser | null>;
+  countActiveSessions(): Promise<number>;
 
   listUsers(): Promise<StoreUser[]>;
   getUser(userId: string): Promise<StoreUser | null>;

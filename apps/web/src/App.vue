@@ -745,7 +745,9 @@ async function onLogout(): Promise<void> {
 
 /* 账本横线：极淡的纸纹，只在留白处可见 */
 .vd-content {
+  display: flex;
   flex: 1;
+  flex-direction: column;
   min-height: 0;
   padding: 22px 28px 36px;
   overflow-x: hidden;
