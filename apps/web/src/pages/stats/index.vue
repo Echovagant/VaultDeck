@@ -1,22 +1,26 @@
 <template>
   <section>
-    <h1 class="vd-page-title">数据统计</h1>
-    <p class="vd-page-sub">按项目统计各类资料数量与容量，可导出 CSV</p>
-
-    <div class="vd-toolbar">
-      <a-select
-        v-model:value="projectId"
-        placeholder="全部项目"
-        allow-clear
-        style="width: 220px"
-        :options="projectOptions"
-        @change="load"
-      />
-      <a-button :loading="loading" @click="load">刷新</a-button>
-      <a-button type="primary" :disabled="items.length === 0" @click="exportCsv">
-        导出 CSV
-      </a-button>
-    </div>
+    <header class="vd-page-head">
+      <div>
+        <p class="vd-eyebrow">02 / STATISTICS</p>
+        <h1 class="vd-page-title">数据统计</h1>
+        <p class="vd-page-sub">按项目统计各类资料数量与容量，可导出 CSV</p>
+      </div>
+      <div class="vd-page-actions">
+        <a-select
+          v-model:value="projectId"
+          placeholder="全部项目"
+          allow-clear
+          style="width: 200px"
+          :options="projectOptions"
+          @change="load"
+        />
+        <a-button :loading="loading" @click="load">刷新</a-button>
+        <a-button type="primary" :disabled="items.length === 0" @click="exportCsv">
+          导出 CSV
+        </a-button>
+      </div>
+    </header>
 
     <a-table
       :columns="columns"

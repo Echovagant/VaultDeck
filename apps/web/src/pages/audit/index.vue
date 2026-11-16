@@ -1,7 +1,12 @@
 <template>
   <section>
-    <h1 class="vd-page-title">操作日志</h1>
-    <p class="vd-page-sub">仅展示你有权查看的记录；审计只追加，不可修改</p>
+    <header class="vd-page-head">
+      <div>
+        <p class="vd-eyebrow">05 / AUDIT</p>
+        <h1 class="vd-page-title">操作日志</h1>
+        <p class="vd-page-sub">仅展示你有权查看的记录；审计只追加，不可修改</p>
+      </div>
+    </header>
 
     <a-table
       :columns="columns"

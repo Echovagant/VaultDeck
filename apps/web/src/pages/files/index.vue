@@ -1,6 +1,6 @@
 <template>
-  <div class="files-layout">
-    <aside class="files-aside">
+  <div class="files-layout" :class="{ 'aside-collapsed': asideCollapsed }">
+    <aside v-show="!asideCollapsed" class="files-aside">
       <div class="aside-search">
         <a-input
           v-model:value="folderSearch"
@@ -46,7 +46,16 @@
       </a-tabs>
 
       <div class="files-toolbar">
-        <div class="toolbar-left">
+        <div class="toolbar-row">
+          <a-button
+            type="text"
+            class="aside-toggle"
+            :title="asideCollapsed ? '展开目录' : '收起目录'"
+            @click="toggleAside"
+          >
+            <MenuUnfoldOutlined v-if="asideCollapsed" />
+            <MenuFoldOutlined v-else />
+          </a-button>
           <h2 class="files-title">{{ currentFolderName || projectName || '项目资料' }}</h2>
           <a-dropdown>
             <a-button type="primary">
@@ -74,9 +83,14 @@
               </a-menu>
             </template>
           </a-dropdown>
+          <div class="toolbar-spacer" />
+          <a-segmented v-model:value="viewMode" :options="viewOptions" />
+          <a-button type="text" title="文件夹管理" @click="folderManagerVisible = true">
+            <SettingOutlined />
+          </a-button>
         </div>
 
-        <div class="toolbar-right">
+        <div class="toolbar-row toolbar-row-filter">
           <a-input
             v-model:value="folderFilter"
             placeholder="请输入文件夹名称"
@@ -86,10 +100,9 @@
           <a-select v-model:value="typeFilter" style="width: 130px" :options="typeOptions" />
           <a-button @click="resetFilter">重置</a-button>
           <a-button type="primary" @click="applyFilter">搜索</a-button>
-          <a-segmented v-model:value="viewMode" :options="viewOptions" />
-          <a-button type="text" title="文件夹管理" @click="folderManagerVisible = true">
-            <SettingOutlined />
-          </a-button>
+          <span class="files-count">
+            文件夹 {{ visibleFolders.length }} 个 · 文件 {{ visibleFiles.length }} 个
+          </span>
         </div>
       </div>
 
@@ -253,7 +266,14 @@
 </template>
 
 <script setup lang="ts">
-import { DownOutlined, FileOutlined, FolderFilled, SettingOutlined } from '@ant-design/icons-vue';
+import {
+  DownOutlined,
+  FileOutlined,
+  FolderFilled,
+  MenuFoldOutlined,
+  MenuUnfoldOutlined,
+  SettingOutlined,
+} from '@ant-design/icons-vue';
 import { message } from 'ant-design-vue';
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
@@ -313,6 +333,12 @@ const typeFilter = ref('all');
 const appliedFolderFilter = ref('');
 const appliedTypeFilter = ref('all');
 const viewMode = ref<'grid' | 'list'>('grid');
+const asideCollapsed = ref(localStorage.getItem('vd_aside_collapsed') === '1');
+
+function toggleAside(): void {
+  asideCollapsed.value = !asideCollapsed.value;
+  localStorage.setItem('vd_aside_collapsed', asideCollapsed.value ? '1' : '0');
+}
 const categories = ref<CategoryItem[]>([]);
 
 const folderManagerVisible = ref(false);
@@ -818,10 +844,10 @@ onMounted(async () => {
 }
 
 .files-aside {
-  padding: 16px;
-  background: #ffffff;
+  padding: 16px 14px;
+  background: var(--vd-surface);
   border: 1px solid var(--vd-border);
-  border-radius: 12px;
+  border-radius: var(--vd-radius);
 }
 
 .aside-search {
@@ -857,8 +883,8 @@ onMounted(async () => {
 }
 
 .hit-item:hover {
-  border-color: #bcd8fb;
-  background: #f5f9ff;
+  border-color: var(--vd-border-strong);
+  background: #fbf6ec;
 }
 
 .hit-name {
@@ -878,26 +904,42 @@ onMounted(async () => {
 }
 
 .files-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: center;
-  justify-content: space-between;
-  margin: 8px 0 12px;
+  padding: 12px 14px;
+  margin: 8px 0 14px;
+  background: var(--vd-surface);
+  border: 1px solid var(--vd-border);
+  border-radius: var(--vd-radius);
 }
 
-.toolbar-left,
-.toolbar-right {
+.toolbar-row {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
   align-items: center;
 }
 
+.toolbar-row-filter {
+  margin-top: 10px;
+}
+
+.toolbar-spacer {
+  flex: 1;
+}
+
+.aside-toggle {
+  padding-left: 0;
+}
+
+.files-layout.aside-collapsed {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .files-title {
   margin: 0 8px 0 0;
-  font-size: 18px;
+  font-family: var(--vd-font-display);
+  font-size: 19px;
   font-weight: 600;
+  letter-spacing: 0.01em;
 }
 
 .files-crumb {
@@ -917,9 +959,9 @@ onMounted(async () => {
   align-items: center;
   gap: 8px;
   padding: 18px 12px;
-  background: #ffffff;
+  background: var(--vd-surface);
   border: 1px solid var(--vd-border);
-  border-radius: 12px;
+  border-radius: var(--vd-radius);
   cursor: pointer;
   transition:
     box-shadow 0.2s ease,
@@ -927,18 +969,18 @@ onMounted(async () => {
 }
 
 .grid-card:hover {
-  border-color: #bcd8fb;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+  border-color: var(--vd-border-strong);
+  box-shadow: 0 8px 24px rgba(58, 43, 28, 0.08);
 }
 
 .folder-icon {
   font-size: 40px;
-  color: #eab308;
+  color: var(--vd-ochre);
 }
 
 .file-icon {
   font-size: 38px;
-  color: #6e6e73;
+  color: var(--vd-text-secondary);
 }
 
 .grid-name {
@@ -953,8 +995,8 @@ onMounted(async () => {
 
 .sample-badge {
   padding: 0 6px;
-  border-radius: 6px;
-  background: #f5f5f7;
+  border-radius: var(--vd-radius-sm);
+  background: var(--vd-ochre-soft);
   color: var(--vd-text-secondary);
   font-size: 11px;
 }

@@ -161,8 +161,8 @@ watch(
 .text-block {
   margin: 0;
   padding: 12px;
-  background: #fafafa;
-  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  background: var(--vd-surface-sunken);
+  font-family: var(--vd-font-mono);
   font-size: 13px;
   white-space: pre-wrap;
   word-break: break-all;

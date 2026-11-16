@@ -1,13 +1,32 @@
 <template>
   <section>
-    <div class="page-head">
+    <header class="vd-page-head">
       <div>
+        <p class="vd-eyebrow">01 / PROJECTS</p>
         <h1 class="vd-page-title">项目</h1>
         <p class="vd-page-sub">按项目归档资料；领队可查看全部项目</p>
       </div>
-      <a-button v-if="session.user?.role === 'LEADER'" type="primary" @click="openCreate">
-        新建项目
-      </a-button>
+      <div class="vd-page-actions">
+        <a-button v-if="session.user?.role === 'LEADER'" type="primary" @click="openCreate">
+          新建项目
+        </a-button>
+      </div>
+    </header>
+
+    <div class="archive-stats">
+      <div class="archive-stat">
+        <span class="archive-value vd-mono">{{ projects.length }}</span>
+        <span class="archive-label">项目</span>
+      </div>
+      <div class="archive-stat">
+        <span class="archive-value vd-mono">{{ totalFiles }}</span>
+        <span class="archive-label">文件</span>
+      </div>
+      <div class="archive-stat">
+        <span class="archive-value vd-mono">{{ formatBytes(totalBytes) }}</span>
+        <span class="archive-label">总容量</span>
+      </div>
+      <div class="archive-tag vd-mono">LOCAL ARCHIVE</div>
     </div>
 
     <a-table
@@ -49,7 +68,7 @@
 
 <script setup lang="ts">
 import { message } from 'ant-design-vue';
-import { onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { ApiError, api, formatBytes, type ProjectSummary } from '@/api/client';
@@ -58,6 +77,8 @@ import { useSessionStore } from '@/stores/session';
 const router = useRouter();
 const session = useSessionStore();
 const projects = ref<ProjectSummary[]>([]);
+const totalFiles = computed(() => projects.value.reduce((sum, item) => sum + item.fileCount, 0));
+const totalBytes = computed(() => projects.value.reduce((sum, item) => sum + item.totalBytes, 0));
 const loading = ref(false);
 const saving = ref(false);
 const dialogVisible = ref(false);
@@ -119,12 +140,50 @@ function openProject(projectId: string): void {
 
 onMounted(load);
 </script>
-
 <style scoped>
-.page-head {
+.archive-stats {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
+  align-items: stretch;
   margin-bottom: 20px;
+  padding: 14px 0;
+  border-top: 1px solid var(--vd-border);
+  border-bottom: 1px solid var(--vd-border);
+}
+
+.archive-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 118px;
+  padding: 0 22px;
+  border-right: 1px solid var(--vd-border);
+}
+
+.archive-stat:first-child {
+  padding-left: 0;
+}
+
+.archive-value {
+  color: var(--vd-text);
+  font-size: 24px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+}
+
+.archive-label {
+  color: var(--vd-text-secondary);
+  font-family: var(--vd-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+}
+
+.archive-tag {
+  align-self: center;
+  margin-left: auto;
+  padding-right: 4px;
+  color: var(--vd-ochre);
+  font-size: 10px;
+  letter-spacing: 0.24em;
 }
 </style>

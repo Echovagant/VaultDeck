@@ -1,7 +1,12 @@
 <template>
   <section>
-    <h1 class="vd-page-title">搜索</h1>
-    <p class="vd-page-sub">按文件名检索你有权查看的资料</p>
+    <header class="vd-page-head">
+      <div>
+        <p class="vd-eyebrow">QUERY / FILES</p>
+        <h1 class="vd-page-title">搜索</h1>
+        <p class="vd-page-sub">按文件名检索你有权查看的资料</p>
+      </div>
+    </header>
 
     <div class="vd-toolbar">
       <a-input-search

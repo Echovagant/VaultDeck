@@ -168,6 +168,10 @@ export interface StorePort {
   getUser(userId: string): Promise<StoreUser | null>;
   createUser(input: CreateUserInput): Promise<StoreUser>;
   updateUser(input: UpdateUserInput): Promise<StoreUser>;
+  updateProfile(userId: string, displayName: string): Promise<StoreUser>;
+  changePassword(userId: string, currentPassword: string, newPassword: string): Promise<boolean>;
+  revokeOtherSessions(userId: string, keepToken: string): Promise<void>;
+  revokeAllSessions(userId: string): Promise<void>;
 
   getSettings(): Promise<StoreSettings>;
   updateSettings(patch: SettingsPatch): Promise<StoreSettings>;

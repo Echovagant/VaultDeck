@@ -60,6 +60,7 @@ export interface LoginResponse {
   username: string;
   displayName: string;
   role: string;
+  avatarUrl?: string;
 }
 
 export interface SessionUser {
@@ -67,6 +68,7 @@ export interface SessionUser {
   username: string;
   displayName: string;
   role: string;
+  avatarUrl?: string;
 }
 
 export interface ProjectSummary {

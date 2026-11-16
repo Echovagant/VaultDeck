@@ -79,11 +79,11 @@ export class UploadController {
 
     if (body.sha256 && settings.instantUploadEnabled) {
       const projectFiles = await store.listFiles(body.projectId);
-      const existing = projectFiles.find(
-        (file) => file.sha256 === body.sha256 && file.sizeBytes === body.sizeBytes,
-      );
-      if (existing) {
-        return { kind: 'instant', fileId: existing.fileId, objectId: existing.objectPath };
+      for (const file of projectFiles) {
+        if (file.status !== 'active' || file.objectPath.length === 0) continue;
+        if (file.sha256 !== body.sha256 || file.sizeBytes !== body.sizeBytes) continue;
+        if (!(await store.canReadFile(user, file))) continue;
+        return { kind: 'instant', fileId: file.fileId, objectId: file.objectPath };
       }
     }
 

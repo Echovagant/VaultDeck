@@ -4,7 +4,7 @@ import type { RoleCode, UpdateUserInput } from '../../../application/ports/store
 import { store } from '../../../infrastructure/store';
 import { DomainError } from '../errors/problem-details';
 import { StrictBodyPipe } from '../validation/strict-body.pipe';
-import { requireUser } from './auth.controller';
+import { requireUser, readBearerToken } from './auth.controller';
 
 interface CreateUserBody {
   username: string;
@@ -21,7 +21,7 @@ const createUserSchema = {
     username: { type: 'string', minLength: 3, maxLength: 64 },
     displayName: { type: 'string', minLength: 1, maxLength: 64 },
     role: { type: 'string', enum: ['LEADER', 'DEPUTY_LEADER', 'MEMBER'] },
-    password: { type: 'string', minLength: 10, maxLength: 256 },
+    password: { type: 'string', minLength: 8, maxLength: 256 },
   },
 };
 
@@ -39,7 +39,7 @@ const updateUserSchema = {
     displayName: { type: 'string', minLength: 1, maxLength: 64 },
     role: { type: 'string', enum: ['LEADER', 'DEPUTY_LEADER', 'MEMBER'] },
     status: { type: 'string', enum: ['active', 'disabled'] },
-    password: { type: 'string', minLength: 10, maxLength: 256 },
+    password: { type: 'string', minLength: 8, maxLength: 256 },
   },
 };
 
@@ -119,13 +119,24 @@ export class UsersController {
     if (body.password !== undefined) input.password = body.password;
 
     const updated = await store.updateUser(input);
+    if (body.password !== undefined) {
+      if (userId === user.userId) {
+        const token = readBearerToken(authorization);
+        if (token) await store.revokeOtherSessions(userId, token);
+      } else {
+        await store.revokeAllSessions(userId);
+      }
+    }
     await store.recordAudit({
       actor: user,
-      action: 'user.update',
+      action: body.password !== undefined ? 'user.password_reset' : 'user.update',
       objectType: 'user',
       objectId: updated.userId,
       result: 'success',
-      detail: `${updated.username} status=${updated.status} role=${updated.role}`,
+      detail:
+        body.password !== undefined
+          ? `${updated.username} password reset`
+          : `${updated.username} status=${updated.status} role=${updated.role}`,
     });
     return updated;
   }

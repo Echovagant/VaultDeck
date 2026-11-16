@@ -1,13 +1,68 @@
 :root {
-  --vd-bg: #f5f5f7;
-  --vd-surface: #ffffff;
-  --vd-text: #1d1d1f;
-  --vd-text-secondary: #6e6e73;
-  --vd-border: rgba(0, 0, 0, 0.08);
-  --vd-accent: #0071e3;
-  --vd-accent-soft: #e8f1fd;
-  --vd-radius: 12px;
-  --vd-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 12px 32px rgba(0, 0, 0, 0.05);
+  color-scheme: light;
+
+  /* 纸面与墨色：档案馆调性，刻意不使用任何蓝色 */
+  --vd-paper: #f4efe6;
+  --vd-paper-line: rgba(36, 31, 26, 0.02);
+  --vd-surface: #fffcf6;
+  --vd-surface-sunken: #efe7d8;
+  --vd-ink: #1e1a16;
+  --vd-ink-soft: #2b2520;
+  --vd-text: #241f1a;
+  --vd-text-secondary: #7a6e60;
+  --vd-text-inverse: #f6f1e7;
+
+  /* 强调：砖红为主，赭黄为辅 */
+  --vd-accent: #b4482c;
+  --vd-accent-deep: #8f3620;
+  --vd-accent-soft: #f3e2d9;
+  --vd-ochre: #c8922f;
+  --vd-ochre-soft: #f6ecd7;
+
+  --vd-border: #e2d8c8;
+  --vd-border-strong: #cfc2ad;
+  --vd-rule: rgba(36, 31, 26, 0.08);
+
+  /* 侧栏：深墨（默认主题） */
+  --vd-sider-bg: #1e1a16;
+  --vd-sider-text: rgba(246, 241, 231, 0.7);
+  --vd-sider-text-dim: rgba(246, 241, 231, 0.3);
+  --vd-sider-strong: #f6f1e7;
+  --vd-sider-rule: rgba(246, 241, 231, 0.08);
+  --vd-sider-hover: rgba(180, 72, 44, 0.22);
+  --vd-sider-hover-text: #fffaf2;
+  --vd-sider-watermark: rgba(246, 241, 231, 0.055);
+
+  --vd-radius-sm: 4px;
+  --vd-radius: 8px;
+  --vd-radius-lg: 14px;
+
+  --vd-shadow: 0 1px 2px rgba(58, 43, 28, 0.05), 0 10px 28px rgba(58, 43, 28, 0.06);
+
+  --vd-font-body:
+    -apple-system, 'SF Pro Text', 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --vd-font-display: 'Noto Serif SC', 'Songti SC', Georgia, 'Times New Roman', serif;
+  --vd-font-mono: 'JetBrains Mono', 'Cascadia Mono', Consolas, 'Courier New', monospace;
+}
+
+/* 浅色主题：暖米侧栏 + 更亮的纸底，仍然不出现蓝白 */
+html[data-theme='light'] {
+  --vd-paper: #fbf7ef;
+  --vd-paper-line: rgba(36, 31, 26, 0.03);
+  --vd-surface: #fffdf9;
+  --vd-surface-sunken: #f3ebdd;
+  --vd-border: #e6dccb;
+  --vd-border-strong: #d5c7b2;
+  --vd-rule: rgba(36, 31, 26, 0.07);
+  --vd-sider-bg: #efe6d6;
+  --vd-sider-text: rgba(36, 31, 26, 0.66);
+  --vd-sider-text-dim: rgba(36, 31, 26, 0.34);
+  --vd-sider-strong: #241f1a;
+  --vd-sider-rule: rgba(36, 31, 26, 0.1);
+  --vd-sider-hover: rgba(180, 72, 44, 0.1);
+  --vd-sider-hover-text: #241f1a;
+  --vd-sider-watermark: rgba(36, 31, 26, 0.05);
+  --vd-shadow: 0 1px 2px rgba(58, 43, 28, 0.04), 0 8px 22px rgba(58, 43, 28, 0.05);
 }
 
 * {
@@ -22,12 +77,22 @@ body,
 
 body {
   margin: 0;
-  background: var(--vd-bg);
+  background: var(--vd-paper);
   color: var(--vd-text);
-  font-family:
-    -apple-system, 'SF Pro Text', 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  font-family: var(--vd-font-body);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--vd-accent-soft);
+  color: var(--vd-accent-deep);
+}
+
+/* 纸面纹理：极淡的斜向网点，避免纯色死板 */
+.vd-paper-grain {
+  background-image: radial-gradient(circle at 1px 1px, rgba(36, 31, 26, 0.045) 1px, transparent 0);
+  background-size: 6px 6px;
 }
 
 .vd-card {
@@ -37,17 +102,63 @@ body {
   box-shadow: var(--vd-shadow);
 }
 
+.vd-panel {
+  background: var(--vd-surface);
+  border: 1px solid var(--vd-border);
+  border-radius: var(--vd-radius);
+}
+
+/* 编号眉标：等宽小字 + 字距，编辑排版的标志性细节 */
+.vd-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--vd-accent);
+  font-family: var(--vd-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.vd-eyebrow::after {
+  content: '';
+  display: block;
+  width: 28px;
+  height: 1px;
+  background: var(--vd-border-strong);
+}
+
+.vd-page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  padding-bottom: 12px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--vd-border);
+}
+
 .vd-page-title {
-  margin: 0;
-  font-size: 22px;
+  margin: 4px 0 0;
+  font-family: var(--vd-font-display);
+  font-size: 24px;
   font-weight: 600;
-  letter-spacing: -0.2px;
+  letter-spacing: 0.01em;
+  line-height: 1.25;
 }
 
 .vd-page-sub {
-  margin: 4px 0 0;
+  margin: 6px 0 0;
   color: var(--vd-text-secondary);
   font-size: 13px;
+  line-height: 1.6;
+}
+
+.vd-page-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
 }
 
 .vd-toolbar {
@@ -62,36 +173,131 @@ body {
   padding: 20px 24px;
 }
 
+.vd-mono {
+  font-family: var(--vd-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 表格：细线、无斑马纹、表头小型大写 */
 .ant-table-wrapper .ant-table {
-  border-radius: 12px;
+  background: var(--vd-surface);
+  border-radius: var(--vd-radius);
 }
 
 .ant-table-wrapper .ant-table-thead > tr > th {
-  background: #fafafa;
+  background: var(--vd-surface-sunken);
   color: var(--vd-text-secondary);
-  font-weight: 600;
+  font-family: var(--vd-font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   padding: 10px 12px;
+  border-bottom: 1px solid var(--vd-border);
 }
 
 .ant-table-wrapper .ant-table-tbody > tr > td {
-  border-bottom-color: rgba(0, 0, 0, 0.05);
+  border-bottom-color: var(--vd-rule);
   padding: 9px 12px;
+  font-size: 13px;
 }
 
-.ant-modal-content,
-.ant-drawer-body {
-  border-radius: 14px;
+.ant-table-wrapper .ant-table-tbody > tr.ant-table-row:hover > td {
+  background: #fbf6ec;
 }
 
+.ant-table-wrapper .ant-table-tbody > tr > td .ant-typography,
+.ant-table-wrapper .ant-table-tbody > tr > td a {
+  font-weight: 500;
+}
+
+/* 弹窗与抽屉：纸面 + 细描边 */
+.ant-modal .ant-modal-content,
+.ant-drawer .ant-drawer-body {
+  border-radius: var(--vd-radius-lg);
+}
+
+.ant-modal .ant-modal-header {
+  border-bottom: 1px solid var(--vd-border);
+  padding-bottom: 12px;
+}
+
+.ant-modal .ant-modal-title {
+  font-family: var(--vd-font-display);
+  font-size: 17px;
+  font-weight: 600;
+}
+
+/* 按钮：主按钮用砖红，带一点印刷压印感 */
 .ant-btn {
   font-weight: 500;
 }
 
+.ant-btn-primary {
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04);
+}
+
+.ant-btn-primary:not(:disabled):hover {
+  transform: translateY(-1px);
+}
+
+.ant-btn-link {
+  padding-inline: 0;
+}
+
+/* 输入控件 */
 .ant-input,
+.ant-input-affix-wrapper,
 .ant-select-selector,
+.ant-picker,
 .ant-btn {
   transition:
-    border-color 0.2s ease,
-    box-shadow 0.2s ease,
-    background-color 0.2s ease;
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    background-color 0.18s ease,
+    transform 0.18s ease;
+}
+
+.ant-input::placeholder,
+.ant-select-selection-placeholder {
+  color: #a3968a;
+}
+
+/* 标签：柔和底色，不用高亮蓝 */
+.ant-tag {
+  border-radius: var(--vd-radius-sm);
+  font-family: var(--vd-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+/* 滚动条与纸面同色系 */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d8cbb8;
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #c6b6a0;
+  background-clip: content-box;
+  border: 3px solid transparent;
+}
+
+@media (max-width: 1080px) {
+  .vd-page-head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
 }

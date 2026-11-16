@@ -75,6 +75,18 @@ class MemoryStore implements StorePort {
     this.sessions.delete(token);
   }
 
+  async revokeOtherSessions(userId: string, keepToken: string): Promise<void> {
+    for (const [token, owner] of this.sessions) {
+      if (owner === userId && token !== keepToken) this.sessions.delete(token);
+    }
+  }
+
+  async revokeAllSessions(userId: string): Promise<void> {
+    for (const [token, owner] of this.sessions) {
+      if (owner === userId) this.sessions.delete(token);
+    }
+  }
+
   async userByToken(token: string): Promise<StoreUser | null> {
     const userId = this.sessions.get(token);
     if (!userId) return null;
@@ -134,6 +146,25 @@ class MemoryStore implements StorePort {
       this.settings.instantUploadEnabled = patch.instantUploadEnabled;
     }
     return { ...this.settings };
+  }
+
+  async updateProfile(userId: string, displayName: string): Promise<StoreUser> {
+    const record = this.users.get(userId);
+    if (!record) throw new Error('USER_NOT_FOUND');
+    record.displayName = displayName;
+    return this.toStoreUser(record);
+  }
+
+  async changePassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<boolean> {
+    const record = this.users.get(userId);
+    if (!record) return false;
+    if (record.password !== currentPassword) return false;
+    record.password = newPassword;
+    return true;
   }
 
   async memberProjectIds(userId: string): Promise<string[]> {

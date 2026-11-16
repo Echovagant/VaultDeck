@@ -49,6 +49,16 @@ export class FilesController {
     return { ok: true };
   }
 
+  @Get(':fileId')
+  async detail(@Param('fileId') fileId: string, @Headers('authorization') authorization?: string) {
+    const user = await requireUser(authorization);
+    const file = await store.getFile(fileId);
+    if (!file || !(await store.canReadFile(user, file))) {
+      throw new DomainError('AUTH', 'VD-AUTH-404', '文件不存在', { status: 404 });
+    }
+    return toPublicFile(file);
+  }
+
   @Get(':fileId/content')
   async content(
     @Param('fileId') fileId: string,

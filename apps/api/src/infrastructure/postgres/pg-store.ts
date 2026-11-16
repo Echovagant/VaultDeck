@@ -286,6 +286,50 @@ export class PgStore implements StorePort {
     return this.getSettings();
   }
 
+  async updateProfile(userId: string, displayName: string): Promise<StoreUser> {
+    const result = await this.pool.query<UserRow>(
+      'UPDATE app_user SET display_name = $1 WHERE user_id = $2 RETURNING *',
+      [displayName, userId],
+    );
+    const row = result.rows[0];
+    if (!row) throw new Error('USER_NOT_FOUND');
+    return mapUser(row);
+  }
+
+  async changePassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<boolean> {
+    const result = await this.pool.query<UserRow>('SELECT * FROM app_user WHERE user_id = $1', [
+      userId,
+    ]);
+    const row = result.rows[0];
+    if (!row) return false;
+    if (!verifyPassword(currentPassword, row.password_hash)) return false;
+
+    await this.pool.query('UPDATE app_user SET password_hash = $1 WHERE user_id = $2', [
+      hashPassword(newPassword),
+      userId,
+    ]);
+    return true;
+  }
+
+  async revokeOtherSessions(userId: string, keepToken: string): Promise<void> {
+    await this.pool.query(
+      `UPDATE user_session SET revoked_at = now()
+       WHERE user_id = $1 AND token_hash <> $2 AND revoked_at IS NULL`,
+      [userId, sha256Hex(keepToken)],
+    );
+  }
+
+  async revokeAllSessions(userId: string): Promise<void> {
+    await this.pool.query(
+      `UPDATE user_session SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL`,
+      [userId],
+    );
+  }
+
   async memberProjectIds(userId: string): Promise<string[]> {
     const result = await this.pool.query<{ project_id: string }>(
       'SELECT project_id FROM project_member WHERE user_id = $1',

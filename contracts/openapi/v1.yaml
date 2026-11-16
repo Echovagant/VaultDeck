@@ -62,6 +62,71 @@ paths:
       responses:
         '204': { description: 已修改，其他会话失效 }
         '400': { $ref: '#/components/responses/BadRequest' }
+  /auth/me:
+    get:
+      tags: [auth]
+      operationId: getProfile
+      responses:
+        '200':
+          description: 当前账号信息
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Principal' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    patch:
+      tags: [auth]
+      operationId: updateProfile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateProfileRequest' }
+      responses:
+        '200':
+          description: 已更新
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Principal' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /auth/avatar:
+    post:
+      tags: [auth]
+      operationId: uploadAvatar
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+              x-max-bytes: 2097152
+      responses:
+        '201':
+          description: 已更新头像
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AvatarResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '415':
+          description: 不支持的图片类型
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+  /auth/avatar/{userId}:
+    get:
+      tags: [auth]
+      operationId: getAvatar
+      parameters:
+        - { name: userId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: 头像图片
+          content:
+            image/png:
+              schema: { type: string, format: binary }
+            image/jpeg:
+              schema: { type: string, format: binary }
+        '404': { $ref: '#/components/responses/NotFound' }
   /users:
     get:
       tags: [users]
@@ -860,7 +925,18 @@ components:
       additionalProperties: false
       properties:
         currentPassword: { type: string }
-        newPassword: { type: string, minLength: 10, maxLength: 256 }
+        newPassword: { type: string, minLength: 8, maxLength: 256 }
+    UpdateProfileRequest:
+      type: object
+      additionalProperties: false
+      required: [displayName]
+      properties:
+        displayName: { type: string, minLength: 1, maxLength: 64 }
+    AvatarResult:
+      type: object
+      required: [avatarUrl]
+      properties:
+        avatarUrl: { type: string }
     Principal:
       type: object
       required: [userId, username, displayName, role]
@@ -869,6 +945,7 @@ components:
         username: { type: string }
         displayName: { type: string }
         role: { $ref: '#/components/schemas/RoleCode' }
+        avatarUrl: { type: string }
         projectIds:
           type: array
           items: { type: string, format: uuid }
@@ -892,12 +969,13 @@ components:
         total: { type: integer, minimum: 0 }
     CreateUserRequest:
       type: object
-      required: [username, displayName, role]
+      required: [username, displayName, role, password]
       additionalProperties: false
       properties:
         username: { type: string, minLength: 3, maxLength: 64 }
         displayName: { type: string, minLength: 1, maxLength: 64 }
         role: { $ref: '#/components/schemas/RoleCode' }
+        password: { type: string, minLength: 8, maxLength: 256 }
     UpdateUserRequest:
       type: object
       additionalProperties: false
@@ -905,6 +983,7 @@ components:
         displayName: { type: string, minLength: 1, maxLength: 64 }
         role: { $ref: '#/components/schemas/RoleCode' }
         status: { type: string, enum: [active, disabled] }
+        password: { type: string, minLength: 8, maxLength: 256 }
     Project:
       type: object
       required: [projectId, projectCode, projectName, status]
@@ -1024,6 +1103,7 @@ components:
         uploaderId: { type: string, format: uuid }
         sha256: { type: string, pattern: '^[a-f0-9]{64}$' }
         status: { type: string, enum: [active, trashed, purging, corrupted] }
+        hasContent: { type: boolean }
         createdAt: { type: string, format: date-time }
     FilePage:
       type: object

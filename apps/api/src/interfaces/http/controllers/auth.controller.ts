@@ -1,4 +1,21 @@
-import { Body, Controller, Get, Headers, HttpCode, Injectable, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Headers,
+  HttpCode,
+  Injectable,
+  Param,
+  Patch,
+  Post,
+  Put,
+  Res,
+} from '@nestjs/common';
+import { createReadStream } from 'node:fs';
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+
+import type { FastifyReply } from 'fastify';
 
 import type { StoreUser } from '../../../application/ports/store.port';
 import { store } from '../../../infrastructure/store';
@@ -19,6 +36,84 @@ const loginSchema = {
     password: { type: 'string', minLength: 1, maxLength: 256 },
   },
 };
+
+interface UpdateProfileBody {
+  displayName: string;
+}
+
+const updateProfileSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['displayName'],
+  properties: {
+    displayName: { type: 'string', minLength: 1, maxLength: 64 },
+  },
+};
+
+interface ChangePasswordBody {
+  currentPassword: string;
+  newPassword: string;
+}
+
+const changePasswordSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['currentPassword', 'newPassword'],
+  properties: {
+    currentPassword: { type: 'string', minLength: 1 },
+    newPassword: { type: 'string', minLength: 8, maxLength: 256 },
+  },
+};
+
+const AVATAR_ROOT = path.resolve(process.env['VD_AVATAR_ROOT'] ?? '_private/storage/avatars');
+const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
+
+function avatarPath(userId: string): string {
+  return path.join(AVATAR_ROOT, `${userId}.bin`);
+}
+
+function avatarMimePath(userId: string): string {
+  return path.join(AVATAR_ROOT, `${userId}.mime`);
+}
+
+function avatarUrl(userId: string): string {
+  return `/api/v1/auth/avatar/${userId}`;
+}
+
+function detectImageType(data: Buffer): { mime: string } | null {
+  if (
+    data.length >= 8 &&
+    data[0] === 0x89 &&
+    data[1] === 0x50 &&
+    data[2] === 0x4e &&
+    data[3] === 0x47
+  ) {
+    return { mime: 'image/png' };
+  }
+  if (data.length >= 3 && data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff) {
+    return { mime: 'image/jpeg' };
+  }
+  return null;
+}
+
+async function hasAvatar(userId: string): Promise<boolean> {
+  try {
+    const info = await stat(avatarPath(userId));
+    return info.size > 0;
+  } catch {
+    return false;
+  }
+}
+
+async function toPrincipal(user: StoreUser) {
+  const base = {
+    userId: user.userId,
+    username: user.username,
+    displayName: user.displayName,
+    role: user.role,
+  };
+  return (await hasAvatar(user.userId)) ? { ...base, avatarUrl: avatarUrl(user.userId) } : base;
+}
 
 export function readBearerToken(header: string | undefined): string | null {
   if (!header) return null;
@@ -45,6 +140,7 @@ export class AuthController {
     if (!result) {
       throw new DomainError('AUTH', 'VD-AUTH-401', '用户名或口令不正确', { status: 401 });
     }
+
     await store.recordAudit({
       actor: result.user,
       action: 'auth.login',
@@ -53,13 +149,8 @@ export class AuthController {
       result: 'success',
       detail: result.user.username,
     });
-    return {
-      token: result.token,
-      userId: result.user.userId,
-      username: result.user.username,
-      displayName: result.user.displayName,
-      role: result.user.role,
-    };
+
+    return { token: result.token, ...(await toPrincipal(result.user)) };
   }
 
   @Post('logout')
@@ -73,11 +164,106 @@ export class AuthController {
   @Get('me')
   async me(@Headers('authorization') authorization?: string) {
     const user = await requireUser(authorization);
-    return {
-      userId: user.userId,
-      username: user.username,
-      displayName: user.displayName,
-      role: user.role,
-    };
+    return toPrincipal(user);
+  }
+
+  @Patch('me')
+  async updateProfile(
+    @Body(new StrictBodyPipe<UpdateProfileBody>(updateProfileSchema)) body: UpdateProfileBody,
+    @Headers('authorization') authorization?: string,
+  ) {
+    const user = await requireUser(authorization);
+    const displayName = body.displayName.trim();
+    if (displayName.length === 0) {
+      throw new DomainError('VAL', 'VD-VAL-001', '显示名不能为空', { status: 400 });
+    }
+
+    const updated = await store.updateProfile(user.userId, displayName);
+    await store.recordAudit({
+      actor: user,
+      action: 'user.profile_update',
+      objectType: 'user',
+      objectId: user.userId,
+      result: 'success',
+      detail: displayName,
+    });
+    return toPrincipal(updated);
+  }
+
+  @Put('password')
+  @HttpCode(204)
+  async changePassword(
+    @Body(new StrictBodyPipe<ChangePasswordBody>(changePasswordSchema))
+    body: ChangePasswordBody,
+    @Headers('authorization') authorization?: string,
+  ) {
+    const token = readBearerToken(authorization);
+    const user = await requireUser(authorization);
+    const ok = await store.changePassword(user.userId, body.currentPassword, body.newPassword);
+    if (!ok) {
+      throw new DomainError('AUTH', 'VD-AUTH-002', '当前口令不正确', { status: 400 });
+    }
+    if (token) await store.revokeOtherSessions(user.userId, token);
+
+    await store.recordAudit({
+      actor: user,
+      action: 'user.password_change',
+      objectType: 'user',
+      objectId: user.userId,
+      result: 'success',
+      detail: 'password changed',
+    });
+    return undefined;
+  }
+
+  @Post('avatar')
+  @HttpCode(201)
+  async uploadAvatar(@Body() body: Buffer, @Headers('authorization') authorization?: string) {
+    const user = await requireUser(authorization);
+
+    if (!Buffer.isBuffer(body) || body.byteLength === 0) {
+      throw new DomainError('VAL', 'VD-VAL-001', '头像内容为空', { status: 400 });
+    }
+    if (body.byteLength > MAX_AVATAR_BYTES) {
+      throw new DomainError('VAL', 'VD-VAL-011', '头像不能超过 2 MB', { status: 400 });
+    }
+
+    const detected = detectImageType(body);
+    if (!detected) {
+      throw new DomainError('VAL', 'VD-VAL-012', '仅支持 PNG 或 JPEG 图片', { status: 415 });
+    }
+
+    await mkdir(AVATAR_ROOT, { recursive: true });
+    await writeFile(avatarPath(user.userId), body);
+    await writeFile(avatarMimePath(user.userId), detected.mime, 'utf8');
+
+    await store.recordAudit({
+      actor: user,
+      action: 'user.avatar_update',
+      objectType: 'user',
+      objectId: user.userId,
+      result: 'success',
+      detail: detected.mime,
+    });
+
+    return { avatarUrl: avatarUrl(user.userId) };
+  }
+
+  @Get('avatar/:userId')
+  async getAvatar(
+    @Param('userId') userId: string,
+    @Headers('authorization') authorization: string | undefined,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ) {
+    await requireUser(authorization);
+
+    if (!(await hasAvatar(userId))) {
+      throw new DomainError('AUTH', 'VD-AUTH-404', '头像不存在', { status: 404 });
+    }
+
+    const mime = (await readFile(avatarMimePath(userId), 'utf8').catch(() => 'image/png')).trim();
+    reply.header('content-type', mime || 'image/png');
+    reply.header('cache-control', 'private, max-age=60');
+    return createReadStream(avatarPath(userId));
   }
 }

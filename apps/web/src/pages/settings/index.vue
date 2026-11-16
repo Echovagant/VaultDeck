@@ -1,7 +1,12 @@
 <template>
   <section>
-    <h1 class="vd-page-title">系统设置</h1>
-    <p class="vd-page-sub">修改后立即生效；回收站天数只影响之后删除的文件</p>
+    <header class="vd-page-head">
+      <div>
+        <p class="vd-eyebrow">06 / SETTINGS</p>
+        <h1 class="vd-page-title">系统设置</h1>
+        <p class="vd-page-sub">修改后立即生效；回收站天数只影响之后删除的文件</p>
+      </div>
+    </header>
 
     <div class="vd-card settings-card">
       <a-form layout="vertical" :model="form">

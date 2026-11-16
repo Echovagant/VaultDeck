@@ -1,12 +1,15 @@
 <template>
   <section>
-    <div class="page-head">
+    <header class="vd-page-head">
       <div>
+        <p class="vd-eyebrow">03 / CATEGORIES</p>
         <h1 class="vd-page-title">资料分类</h1>
         <p class="vd-page-sub">内置分类不可修改；自定义分类可增删改</p>
       </div>
-      <a-button type="primary" @click="openCreate">新建分类</a-button>
-    </div>
+      <div class="vd-page-actions">
+        <a-button type="primary" @click="openCreate">新建分类</a-button>
+      </div>
+    </header>
 
     <a-table
       :columns="columns"
@@ -170,12 +173,3 @@ async function remove(item: CategoryItem): Promise<void> {
 
 onMounted(load);
 </script>
-
-<style scoped>
-.page-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  margin-bottom: 20px;
-}
-</style>
