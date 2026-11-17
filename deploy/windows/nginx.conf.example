@@ -1,4 +1,9 @@
 worker_processes 1;
+# 路径基准实测（Windows nginx 1.30.6）：
+#   ssl_certificate / ssl_certificate_key → 相对「配置文件所在目录 conf/」
+#   root                                 → 相对「exe 所在目录（tools/nginx/）」
+# 发布包结构：tools/nginx/{conf/nginx.conf, certs/, app/}
+#   证书在 conf 的上一级 → ../certs/；前端在 exe 同级 → app/
 error_log logs/error.log warn;
 pid logs/nginx.pid;
 
@@ -20,8 +25,8 @@ http {
     listen 8443 ssl;
     server_name localhost;
 
-    ssl_certificate certs/server.crt;
-    ssl_certificate_key certs/server.key;
+    ssl_certificate ../certs/server.crt;
+    ssl_certificate_key ../certs/server.key;
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_session_cache shared:SSL:10m;
 
