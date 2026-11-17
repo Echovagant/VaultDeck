@@ -10,13 +10,17 @@ function authHeaders(extra: Record<string, string> = {}): Record<string, string>
   return token ? { ...extra, authorization: `Bearer ${token}` } : extra;
 }
 
-async function sha256Hex(file: File): Promise<string> {
+async function sha256Hex(
+  file: File,
+  onProgress?: (hashedBytes: number) => void,
+): Promise<string> {
   const hasher = await createSHA256();
   hasher.init();
   const step = 4 * 1024 * 1024;
   for (let offset = 0; offset < file.size; offset += step) {
     const slice = file.slice(offset, Math.min(file.size, offset + step));
     hasher.update(new Uint8Array(await slice.arrayBuffer()));
+    onProgress?.(Math.min(file.size, offset + step));
   }
   return hasher.digest('hex');
 }
@@ -37,6 +41,59 @@ export interface UploadOutcome {
 export interface UploadProgress {
   percent: number;
   phase: string;
+  bytesPerSecond?: number;
+  etaSeconds?: number;
+  transferredBytes?: number;
+  totalBytes?: number;
+  instant?: boolean;
+  elapsedMs?: number;
+}
+
+const HASH_PERCENT_END = 5;
+const UPLOAD_PERCENT_END = 98;
+const MERGE_POLL_INTERVAL_MS = 1500;
+const MERGE_TIMEOUT_MS = 30 * 60 * 1000;
+
+interface MergeStatusResponse {
+  status: 'uploading' | 'merging' | 'completed' | 'failed';
+  file?: { fileId: string };
+  error?: string;
+  detail?: string;
+}
+
+function smooth(previous: number, current: number): number {
+  return previous > 0 ? previous * 0.7 + current * 0.3 : current;
+}
+
+async function waitForMerge(
+  sessionId: string,
+  totalBytes: number,
+  onProgress: (progress: UploadProgress) => void,
+): Promise<{ fileId: string }> {
+  const deadline = Date.now() + MERGE_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, MERGE_POLL_INTERVAL_MS));
+    const response = await fetch(`${BASE}/upload-sessions/${sessionId}`, {
+      headers: authHeaders(),
+    });
+    const payload = (await response.json()) as MergeStatusResponse;
+    if (!response.ok) {
+      throw new Error(payload.detail ?? '查询合并状态失败');
+    }
+    if (payload.status === 'completed' && payload.file) {
+      return payload.file;
+    }
+    if (payload.status === 'failed') {
+      throw new Error(payload.error ?? '服务端合并失败');
+    }
+    onProgress({
+      percent: UPLOAD_PERCENT_END + 1,
+      phase: '服务端合并中',
+      transferredBytes: totalBytes,
+      totalBytes,
+    });
+  }
+  throw new Error('服务端合并超时，请稍后在文件中确认');
 }
 
 export async function uploadFile(
@@ -45,8 +102,34 @@ export async function uploadFile(
   folderId: string,
   onProgress: (progress: UploadProgress) => void,
 ): Promise<UploadOutcome> {
-  onProgress({ percent: 0, phase: '计算校验值' });
-  const sha256 = await sha256Hex(file);
+  const startedAt = performance.now();
+  let hashSpeed = 0;
+  let hashSampleAt = startedAt;
+  let hashSampleBytes = 0;
+  let lastHashEmit = 0;
+  onProgress({ percent: 0, phase: '计算校验值', transferredBytes: 0, totalBytes: file.size });
+
+  const sha256 = await sha256Hex(file, (hashedBytes) => {
+    const now = performance.now();
+    const elapsed = (now - hashSampleAt) / 1000;
+    if (elapsed >= 0.25) {
+      hashSpeed = smooth(hashSpeed, (hashedBytes - hashSampleBytes) / elapsed);
+      hashSampleAt = now;
+      hashSampleBytes = hashedBytes;
+    }
+    if (now - lastHashEmit < 150 && hashedBytes < file.size) return;
+    lastHashEmit = now;
+    onProgress({
+      percent: Math.min(
+        HASH_PERCENT_END,
+        Math.round((hashedBytes / Math.max(1, file.size)) * HASH_PERCENT_END),
+      ),
+      phase: '计算校验值',
+      bytesPerSecond: hashSpeed || undefined,
+      transferredBytes: hashedBytes,
+      totalBytes: file.size,
+    });
+  });
 
   const precheckResponse = await fetch(`${BASE}/upload-sessions/precheck`, {
     method: 'POST',
@@ -65,14 +148,34 @@ export async function uploadFile(
     throw new Error(precheck.detail ?? '预检失败');
   }
   if (precheck.kind === 'instant') {
-    onProgress({ percent: 100, phase: '秒传完成' });
+    onProgress({
+      percent: 100,
+      phase: '秒传完成',
+      instant: true,
+      elapsedMs: Math.round(performance.now() - startedAt),
+      transferredBytes: 0,
+      totalBytes: file.size,
+    });
     return { fileId: precheck.fileId, instant: true };
   }
 
   const chunkSize =
     typeof precheck.chunkSize === 'number' ? precheck.chunkSize : FALLBACK_CHUNK_SIZE;
   const received: number[] = Array.isArray(precheck.receivedChunks) ? precheck.receivedChunks : [];
-  let uploadedBytes = received.length * chunkSize;
+  const receivedBytes = received.reduce((sum, index) => {
+    const start = index * chunkSize;
+    return sum + Math.max(0, Math.min(chunkSize, file.size - start));
+  }, 0);
+  let uploadedBytes = receivedBytes;
+  let uploadSpeed = 0;
+  let uploadSampleAt = performance.now();
+  let uploadSampleBytes = uploadedBytes;
+  onProgress({
+    percent: HASH_PERCENT_END,
+    phase: '上传中',
+    transferredBytes: uploadedBytes,
+    totalBytes: file.size,
+  });
 
   for (let offset = 0; offset < file.size; offset += chunkSize) {
     const index = Math.floor(offset / chunkSize);
@@ -99,23 +202,58 @@ export async function uploadFile(
     }
 
     uploadedBytes += buffer.byteLength;
+    const now = performance.now();
+    const elapsed = (now - uploadSampleAt) / 1000;
+    if (elapsed >= 0.25) {
+      uploadSpeed = smooth(uploadSpeed, (uploadedBytes - uploadSampleBytes) / elapsed);
+      uploadSampleAt = now;
+      uploadSampleBytes = uploadedBytes;
+    }
+    const percent =
+      HASH_PERCENT_END +
+      Math.round((uploadedBytes / Math.max(1, file.size)) * (UPLOAD_PERCENT_END - HASH_PERCENT_END));
     onProgress({
-      percent: Math.min(99, Math.round((uploadedBytes / file.size) * 100)),
+      percent: Math.min(UPLOAD_PERCENT_END, percent),
       phase: '上传中',
+      bytesPerSecond: uploadSpeed || undefined,
+      etaSeconds: uploadSpeed > 0 ? (file.size - uploadedBytes) / uploadSpeed : undefined,
+      transferredBytes: uploadedBytes,
+      totalBytes: file.size,
     });
   }
 
-  onProgress({ percent: 99, phase: '合并与校验' });
+  onProgress({
+    percent: UPLOAD_PERCENT_END,
+    phase: '上传中',
+    bytesPerSecond: uploadSpeed || undefined,
+    transferredBytes: file.size,
+    totalBytes: file.size,
+  });
+  onProgress({
+    percent: 99,
+    phase: '服务端合并中',
+    transferredBytes: file.size,
+    totalBytes: file.size,
+  });
   const completeResponse = await fetch(`${BASE}/upload-sessions/${precheck.sessionId}/complete`, {
     method: 'POST',
-    headers: authHeaders({ 'content-type': 'application/json' }),
+    headers: authHeaders({
+      'content-type': 'application/json',
+      prefer: 'respond-async',
+    }),
     body: JSON.stringify({ sha256 }),
   });
-  const fileRecord = await completeResponse.json();
-  if (!completeResponse.ok) {
-    throw new Error(fileRecord.detail ?? '合并失败');
+
+  let fileRecord: { fileId: string };
+  if (completeResponse.status === 202) {
+    fileRecord = await waitForMerge(precheck.sessionId, file.size, onProgress);
+  } else {
+    fileRecord = (await completeResponse.json()) as { fileId: string };
+    if (!completeResponse.ok) {
+      throw new Error((fileRecord as { detail?: string }).detail ?? '合并失败');
+    }
   }
 
-  onProgress({ percent: 100, phase: '完成' });
+  onProgress({ percent: 100, phase: '完成', transferredBytes: file.size, totalBytes: file.size });
   return { fileId: fileRecord.fileId, instant: false };
 }

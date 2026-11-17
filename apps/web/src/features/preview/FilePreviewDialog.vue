@@ -12,7 +12,23 @@
         <iframe v-if="kind === 'pdf'" :src="objectUrl" class="pdf-frame" title="PDF 预览" />
         <img v-else-if="kind === 'image'" :src="objectUrl" class="image" alt="图片预览" />
         <pre v-else-if="kind === 'text'" class="text-block">{{ textContent }}</pre>
-        <a-empty v-else description="该格式暂不支持在线预览，请下载后查看" />
+        <div v-else-if="kind === 'docx'" ref="docxContainer" class="docx-container" />
+        <div v-else-if="kind === 'sheet'" class="sheet-container">
+          <div v-if="sheetNames.length > 1" class="sheet-tabs">
+            <a-button
+              v-for="(name, index) in sheetNames"
+              :key="`${name}-${index}`"
+              size="small"
+              :type="index === activeSheet ? 'primary' : 'default'"
+              @click="selectSheet(index)"
+            >
+              {{ name }}
+            </a-button>
+          </div>
+          <div class="sheet-table" v-html="sheetHtml" />
+          <p v-if="sheetNote" class="sheet-note">{{ sheetNote }}</p>
+        </div>
+        <a-empty v-else :description="unsupportedText" />
       </div>
     </a-spin>
 
@@ -25,7 +41,7 @@
 
 <script setup lang="ts">
 import { message } from 'ant-design-vue';
-import { ref, watch } from 'vue';
+import { nextTick, ref, watch } from 'vue';
 
 import { getToken } from '@/api/client';
 
@@ -44,13 +60,29 @@ const emit = defineEmits<{
 }>();
 
 const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'];
-const OFFICE_EXTENSIONS = ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp', 'rtf'];
 const TEXT_EXTENSIONS = ['txt', 'csv', 'md', 'json', 'log', 'xml', 'yaml', 'yml'];
+// 浏览器端可直接渲染的 Office 格式
+const CLIENT_OFFICE_EXTENSIONS = ['docx', 'xlsx'];
+// 需要服务端高保真转换（LibreOffice 可选）；未启用时提示下载
+const SERVER_EXTENSIONS = ['doc', 'xls', 'ppt', 'pptx', 'odt', 'ods', 'odp', 'rtf'];
+
+const EXCEL_MAX_ROWS = 500;
+const EXCEL_MAX_COLS = 50;
+
+type PreviewKind = 'pdf' | 'image' | 'text' | 'docx' | 'sheet' | 'unsupported';
 
 const loading = ref(false);
-const kind = ref<'pdf' | 'image' | 'text' | 'unsupported'>('unsupported');
+const kind = ref<PreviewKind>('unsupported');
+const unsupportedText = ref('该格式暂不支持在线预览，请下载后查看');
 const objectUrl = ref('');
 const textContent = ref('');
+const docxContainer = ref<HTMLElement | null>(null);
+const sheetHtml = ref('');
+const sheetNote = ref('');
+const sheetNames = ref<string[]>([]);
+const activeSheet = ref(0);
+let workbook: import('exceljs').Workbook | null = null;
+let officeServerCache: boolean | null = null;
 
 function extensionOf(name: string): string {
   const parts = name.split('.');
@@ -61,47 +93,163 @@ function cleanup(): void {
   if (objectUrl.value) URL.revokeObjectURL(objectUrl.value);
   objectUrl.value = '';
   textContent.value = '';
+  sheetHtml.value = '';
+  sheetNote.value = '';
+  sheetNames.value = [];
+  activeSheet.value = 0;
+  workbook = null;
+  if (docxContainer.value) docxContainer.value.innerHTML = '';
   kind.value = 'unsupported';
+}
+
+async function officeServerAvailable(): Promise<boolean> {
+  if (officeServerCache !== null) return officeServerCache;
+  try {
+    const response = await fetch('/api/v1/system/health');
+    const health = await response.json();
+    officeServerCache = Boolean(health?.preview?.officeServer);
+  } catch {
+    officeServerCache = false;
+  }
+  return officeServerCache;
+}
+
+async function fetchContent(file: PreviewFile): Promise<Response> {
+  const token = getToken();
+  return fetch(`/api/v1/files/${file.fileId}/content`, {
+    headers: token ? { authorization: `Bearer ${token}` } : undefined,
+  });
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => {
+    const map: Record<string, string> = {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;',
+    };
+    return map[character] ?? character;
+  });
+}
+
+function renderSheet(): void {
+  const sheet = workbook?.worksheets[activeSheet.value];
+  if (!sheet) return;
+  const rowCount = Math.min(sheet.rowCount, EXCEL_MAX_ROWS);
+  const columnCount = Math.min(sheet.columnCount, EXCEL_MAX_COLS);
+  const rows: string[] = [];
+  for (let rowIndex = 1; rowIndex <= rowCount; rowIndex += 1) {
+    const row = sheet.getRow(rowIndex);
+    const cells: string[] = [];
+    for (let columnIndex = 1; columnIndex <= columnCount; columnIndex += 1) {
+      cells.push(`<td>${escapeHtml(row.getCell(columnIndex).text ?? '')}</td>`);
+    }
+    rows.push(`<tr>${cells.join('')}</tr>`);
+  }
+  sheetHtml.value = `<table><tbody>${rows.join('')}</tbody></table>`;
+  sheetNote.value =
+    sheet.rowCount > EXCEL_MAX_ROWS || sheet.columnCount > EXCEL_MAX_COLS
+      ? `表格较大，仅显示前 ${rowCount} 行 / ${columnCount} 列，完整内容请下载查看`
+      : '';
+}
+
+function selectSheet(index: number): void {
+  activeSheet.value = index;
+  renderSheet();
+}
+
+async function renderDocx(buffer: ArrayBuffer): Promise<void> {
+  kind.value = 'docx';
+  await nextTick();
+  const container = docxContainer.value;
+  if (!container) throw new Error('预览容器未就绪');
+  container.innerHTML = '';
+  const { renderAsync } = await import('docx-preview');
+  await renderAsync(buffer, container, undefined, {
+    inWrapper: true,
+    breakPages: true,
+    ignoreLastRenderedPageBreak: true,
+  });
+}
+
+async function renderXlsx(buffer: ArrayBuffer): Promise<void> {
+  const ExcelJS = await import('exceljs');
+  const book = new ExcelJS.Workbook();
+  await book.xlsx.load(buffer);
+  workbook = book;
+  sheetNames.value = book.worksheets.map((sheet) => sheet.name);
+  activeSheet.value = 0;
+  kind.value = 'sheet';
+  renderSheet();
 }
 
 async function load(file: PreviewFile): Promise<void> {
   cleanup();
+  unsupportedText.value = '该格式暂不支持在线预览，请下载后查看';
   loading.value = true;
   try {
     const ext = extensionOf(file.fileName);
-    const needsConversion = OFFICE_EXTENSIONS.includes(ext);
-    const endpoint = needsConversion
-      ? `/api/v1/files/${file.fileId}/preview`
-      : `/api/v1/files/${file.fileId}/content`;
 
-    const token = getToken();
-    const response = await fetch(endpoint, {
-      headers: token ? { authorization: `Bearer ${token}` } : undefined,
-    });
+    if (ext === 'pdf') {
+      const response = await fetchContent(file);
+      if (!response.ok) throw new Error('加载文件失败');
+      objectUrl.value = URL.createObjectURL(await response.blob());
+      kind.value = 'pdf';
+      return;
+    }
 
-    if (!response.ok) {
-      if (needsConversion) {
+    if (IMAGE_EXTENSIONS.includes(ext)) {
+      const response = await fetchContent(file);
+      if (!response.ok) throw new Error('加载文件失败');
+      objectUrl.value = URL.createObjectURL(await response.blob());
+      kind.value = 'image';
+      return;
+    }
+
+    if (TEXT_EXTENSIONS.includes(ext)) {
+      const response = await fetchContent(file);
+      if (!response.ok) throw new Error('加载文件失败');
+      textContent.value = (await response.text()).slice(0, 200000);
+      kind.value = 'text';
+      return;
+    }
+
+    if (CLIENT_OFFICE_EXTENSIONS.includes(ext)) {
+      const response = await fetchContent(file);
+      if (!response.ok) throw new Error('加载文件失败');
+      const buffer = await response.arrayBuffer();
+      if (ext === 'docx') await renderDocx(buffer);
+      else await renderXlsx(buffer);
+      return;
+    }
+
+    if (SERVER_EXTENSIONS.includes(ext)) {
+      if (!(await officeServerAvailable())) {
+        unsupportedText.value = '该格式需要服务端高保真转换（当前未启用），请下载后查看';
+        kind.value = 'unsupported';
+        return;
+      }
+      const token = getToken();
+      const response = await fetch(`/api/v1/files/${file.fileId}/preview`, {
+        headers: token ? { authorization: `Bearer ${token}` } : undefined,
+      });
+      if (!response.ok) {
+        unsupportedText.value = '服务端转换暂不可用，请下载后查看';
         kind.value = 'unsupported';
         await response.body?.cancel();
         return;
       }
-      throw new Error('加载文件失败');
-    }
-
-    if (needsConversion || ext === 'pdf') {
       objectUrl.value = URL.createObjectURL(await response.blob());
       kind.value = 'pdf';
-    } else if (IMAGE_EXTENSIONS.includes(ext)) {
-      objectUrl.value = URL.createObjectURL(await response.blob());
-      kind.value = 'image';
-    } else if (TEXT_EXTENSIONS.includes(ext)) {
-      textContent.value = (await response.text()).slice(0, 200000);
-      kind.value = 'text';
-    } else {
-      kind.value = 'unsupported';
-      await response.body?.cancel();
+      return;
     }
+
+    kind.value = 'unsupported';
   } catch (error) {
+    kind.value = 'unsupported';
+    unsupportedText.value = '预览失败，请下载后查看';
     message.error(error instanceof Error ? error.message : '预览失败');
   } finally {
     loading.value = false;
@@ -166,6 +314,53 @@ watch(
   font-size: 13px;
   white-space: pre-wrap;
   word-break: break-all;
+}
+
+.docx-container {
+  max-height: 65vh;
+  padding: 8px;
+  overflow: auto;
+  background: #f4f4f4;
+}
+
+.docx-container :deep(.docx-wrapper) {
+  padding: 0;
+  background: transparent;
+}
+
+.sheet-container {
+  max-height: 65vh;
+  overflow: auto;
+}
+
+.sheet-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.sheet-table :deep(table) {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.sheet-table :deep(td) {
+  padding: 4px 8px;
+  border: 1px solid var(--vd-border);
+  white-space: nowrap;
+}
+
+.sheet-table :deep(tr:first-child td) {
+  background: var(--vd-surface-sunken);
+  font-weight: 600;
+}
+
+.sheet-note {
+  margin: 8px 0 0;
+  color: var(--vd-text-secondary);
+  font-size: 12px;
 }
 
 .preview-footer {

@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
+import { testCredentials as creds } from '../lib/test-credentials.mjs';
 const BASE = 'http://127.0.0.1:3000/api/v1';
 
 async function login(username, password) {
@@ -20,7 +21,7 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-const token = await login('leader', 'leader123');
+const token = await login('leader', creds.leader);
 const headers = { authorization: `Bearer ${token}` };
 
 const projects = await (await fetch(`${BASE}/projects`, { headers })).json();

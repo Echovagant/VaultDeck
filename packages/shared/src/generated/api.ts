@@ -78,7 +78,7 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["uploadAvatar"];
-        delete?: never;
+        delete: operations["deleteAvatar"];
         options?: never;
         head?: never;
         patch?: never;
@@ -833,6 +833,8 @@ export interface components {
             receivedBytes: number;
             /** Format: date-time */
             expiresAt?: string;
+            file?: components["schemas"]["File"];
+            error?: string;
         };
         ChunkReceipt: {
             chunkIndex: number;
@@ -950,17 +952,27 @@ export interface components {
             statusUrl?: string;
         };
         Health: {
-            status: string;
+            /** @enum {string} */
+            status: "ok" | "degraded";
             uptimeSeconds: number;
-            storageVolumeFreeBytes?: number;
             activeSessions?: number;
-            errorsLast24h?: number;
-            lastJobs?: {
-                name?: string;
-                /** Format: date-time */
-                lastRunAt?: string;
-                result?: string;
+            storageVolumeFreeBytes?: number | null;
+            storage?: {
+                totalBytes?: number;
+                freeBytes?: number;
+                usedPercent?: number;
+                writeBlocked?: boolean;
+            } | null;
+            errors24h?: number;
+            alerts?: {
+                code?: string;
+                /** @enum {string} */
+                level?: "warning" | "critical";
+                message?: string;
             }[];
+            preview?: {
+                officeServer?: boolean;
+            };
         };
         Settings: {
             maxUploadBytes?: number;
@@ -1202,6 +1214,25 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+        };
+    };
+    deleteAvatar: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已移除头像，恢复默认占位 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
         };
     };
     getAvatar: {
@@ -1900,7 +1931,10 @@ export interface operations {
     completeUpload: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description 传 respond-async 时立即返回 202，客户端通过 GET /upload-sessions/{sessionId} 轮询合并状态 */
+                Prefer?: string;
+            };
             path: {
                 sessionId: components["parameters"]["SessionId"];
             };

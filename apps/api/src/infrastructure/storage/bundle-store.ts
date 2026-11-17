@@ -29,7 +29,10 @@ export async function buildBundle(input: {
 
   const zip = new ZipFile();
   for (const file of input.files) {
-    zip.addFile(file.objectPath, file.fileName);
+    const objectPath = path.isAbsolute(file.objectPath)
+      ? file.objectPath
+      : path.resolve(input.root, file.objectPath);
+    zip.addFile(objectPath, file.fileName);
   }
   zip.end();
 

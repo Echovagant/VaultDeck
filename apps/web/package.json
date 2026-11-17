@@ -13,6 +13,8 @@
   "dependencies": {
     "@ant-design/icons-vue": "^7.0.1",
     "ant-design-vue": "^4.2.6",
+    "docx-preview": "^0.4.1",
+    "exceljs": "^4.4.0",
     "hash-wasm": "^4.13.0",
     "pinia": "^2.2.6",
     "vue": "^3.5.13",

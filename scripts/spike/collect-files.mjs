@@ -1,11 +1,12 @@
 import { writeFileSync } from 'node:fs';
 
+import { testCredentials as creds } from '../lib/test-credentials.mjs';
 const BASE = 'http://127.0.0.1:3000/api/v1';
 
 const loginResponse = await fetch(`${BASE}/auth/login`, {
   method: 'POST',
   headers: { 'content-type': 'application/json' },
-  body: JSON.stringify({ username: 'leader', password: 'leader123' }),
+  body: JSON.stringify({ username: 'leader', password: creds.leader }),
 });
 const login = await loginResponse.json();
 if (loginResponse.status !== 200) throw new Error(JSON.stringify(login));

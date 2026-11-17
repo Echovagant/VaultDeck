@@ -105,6 +105,12 @@ export const useSessionStore = defineStore('session', () => {
     await applyUser(me);
   }
 
+  async function removeAvatar(): Promise<void> {
+    await api('/auth/avatar', { method: 'DELETE' });
+    const me = await api<SessionUser>('/auth/me');
+    await applyUser(me);
+  }
+
   async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
     await api('/auth/password', {
       method: 'PUT',
@@ -126,6 +132,7 @@ export const useSessionStore = defineStore('session', () => {
     logout,
     updateProfile,
     uploadAvatar,
+    removeAvatar,
     changePassword,
     refresh,
   };

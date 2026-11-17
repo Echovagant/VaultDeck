@@ -10,10 +10,11 @@
   <env name="VD_MIGRATIONS_DIR" value="%VAULTDECK_HOME%\current\migrations" />
   <env name="VD_DATA_ROOT" value="%VAULTDECK_HOME%\data\storage" />
   <env name="VD_PREVIEW_CACHE" value="%VAULTDECK_HOME%\data\previews" />
+  <env name="VD_AVATAR_ROOT" value="%VAULTDECK_HOME%\data\storage\avatars" />
   <env name="VD_SOFFICE_PATH" value="%VAULTDECK_HOME%\tools\libreoffice\program\soffice.exe" />
   <logpath>%VAULTDECK_HOME%\logs</logpath>
   <log mode="roll-by-size">
-    <sizeThreshold>10485760</sizeThreshold>
+    <sizeThreshold>10240</sizeThreshold>
     <keepFiles>8</keepFiles>
   </log>
 </service>

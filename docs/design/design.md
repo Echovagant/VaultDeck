@@ -21,8 +21,8 @@
 | 数据库      | PostgreSQL 16                                   | SQLite、MySQL/MariaDB              | 并发写 + 聚合 + 部分索引 + 行级权限，一步到位                               | 3–8 天（限 Repository）          |
 | 数据访问    | Kysely + 手写 SQL 迁移                          | Prisma、TypeORM                    | 类型安全且 SQL 可见，无额外引擎二进制                                       | 1–2 天                           |
 | 反向代理    | Nginx for Windows（**大文件由 Node 流式下发**） | Caddy on Windows、Traefik          | Windows 构建无 `sendfile`/单 worker；Node 流式 20 并发可控且可即时断流      | 1 天（配置）+ 流式已内置         |
-| PDF 渲染    | pdf.js（本地打包）                              | 浏览器内置 viewer                  | 离线可控、支持 Range、能接鉴权网关                                          | ≤1 天（Adapter）                 |
-| Office 预览 | LibreOffice headless 转 PDF + sha256 缓存       | OnlyOffice/Collabora、纯前端       | 保真最高且完全离线；文档服务器过重                                          | ≤1 天（Adapter）                 |
+| PDF 渲染    | 浏览器原生 PDF 查看器（iframe + 同源鉴权流）   | pdf.js、外链查看器                 | 零额外依赖、支持 Range；权限仍由 `GET /files/{id}/content` 统一校验        | ≤1 天（Adapter）                 |
+| Office 预览 | docx-preview + ExcelJS 浏览器内渲染；pptx/老格式可选 LibreOffice 转 PDF | OnlyOffice/Collabora、WPS/Office COM、纯服务端 LibreOffice | 默认不绑定任何办公软件，包体减 1.5 GB；高保真需求再启用服务端转换 | ≤1 天（Adapter） |
 | 搜索        | PostgreSQL `pg_trgm` + `ILIKE`                  | Elasticsearch、Meilisearch         | 十万级不值当第三套服务；权限过滤同库完成                                    | ≤1 天（Adapter）                 |
 | 认证        | 服务端会话 + HttpOnly Cookie                    | JWT、AD/LDAP                       | "停用立即失效"有状态最简单                                                  | ≤1 天（Adapter）                 |
 | 口令        | Node 内置 `scrypt`                              | Argon2id、bcrypt                   | 零 native 编译依赖，离线零风险                                              | ≤0.5 天                          |
@@ -126,7 +126,7 @@ Vue3 + TS（Composition API）/ Vite / Pinia（仅页面级）/ Vue Router（his
 
 ### 2.5 预览引擎
 
-**结论**：混合 + 严格降级（§3.4）：PDF → pdf.js；Office 全系 → LibreOffice 转 PDF（sha256 缓存）；转换失败 → 前端轻渲染（仅 docx/xlsx）；仍失败 → 提示 + 下载入口。**理由**：LibreOffice 是唯一"完全离线 + 覆盖 doc/docx/xls/xlsx/ppt + 保真可接受 + 无授权争议"的选项；PDF 快照对"只看"足够（P1 非目标：不做协同编辑/批注）。**否决**：OnlyOffice/Collabora（额外常驻服务 + 2 GB 内存 + 授权与部署复杂度）、纯前端作主方案（docx 保真差、老格式不支持、大 xlsx 卡死主线程）、云转换（违反 REQ-N-33）、栅格化为图片（丢文字层、转换更慢）。**替换边界**：`PreviewPort` 仅 3 方法，换引擎只换实现与部署包，≤1 天 → `ADR-003`。
+**结论**：混合 + 严格降级（§3.4）：PDF/图片/文本 → 浏览器原生渲染；docx → `docx-preview`，xlsx → `ExcelJS`（均在浏览器内解析，不上传第三方服务）；pptx、老式 doc/xls/ppt 与 ODF → **可选** LibreOffice 转 PDF（仅当部署方配置了 `VD_SOFFICE_PATH` 且文件存在）；仍失败 → 提示 + 下载入口。**理由**：默认方案不绑定任何办公软件，用户装不装 WPS/Office 都能预览 docx/xlsx/PDF，离线包也不再携带 1.5 GB 的 LibreOffice；只有需要高保真还原的 pptx/老格式才启用服务端转换。**否决**：OnlyOffice/Collabora（额外常驻服务 + 2 GB 内存 + 授权与部署复杂度）、WPS/Office COM 自动化（需授权、服务端场景不受支持、无稳定无头 CLI）、云转换（违反 REQ-N-33）。**替换边界**：`PreviewPort` 仅 3 方法，换引擎只换实现与部署包，≤1 天 → `ADR-003`。
 
 ### 2.6 搜索
 
@@ -249,12 +249,13 @@ ${DATA_ROOT}/
 
 降级顺序（严格按序，必须给出可读原因，REQ-F-27）：
 
-| 序  | 类型                   | 实现                                  | 预算（L3）         | 失败判定                |
-| --- | ---------------------- | ------------------------------------- | ------------------ | ----------------------- |
-| 1   | PDF                    | pdf.js + Range 分段                   | 首屏 ≤5 s（50 MB） | 加载/解析失败           |
-| 2   | docx/xlsx/doc/xls/pptx | LibreOffice → PDF（缓存命中直接返回） | ≤10 s（100 MB）    | 超时 120 s / 退出码非 0 |
-| 3   | docx/xlsx              | docx-preview / SheetJS 轻渲染         | ≤10 s              | 解析异常                |
-| 4   | 任意                   | 提示"暂不支持在线预览" + 下载入口     | 即时               | —                       |
+| 序  | 类型                         | 实现                                             | 预算（L3）         | 失败判定                |
+| --- | ---------------------------- | ------------------------------------------------ | ------------------ | ----------------------- |
+| 1   | PDF / 图片 / 文本             | 浏览器原生查看器 / `<img>` / 文本块               | 首屏 ≤5 s（50 MB） | 加载/解析失败           |
+| 2   | docx                         | `docx-preview` 浏览器内渲染                       | ≤10 s（100 MB）    | 解析异常                |
+| 3   | xlsx                         | `ExcelJS` 浏览器内解析并渲染表格（大表截断提示）   | ≤10 s（100 MB）    | 解析异常                |
+| 4   | pptx / doc / xls / ppt / ODF | 可选 LibreOffice → PDF（仅配置时启用，缓存命中直接返回） | ≤10 s（100 MB）    | 超时 120 s / 退出码非 0 |
+| 5   | 任意                         | 提示"该格式需下载后查看" + 下载入口               | 即时               | —                       |
 
 ① 每次转换**独立 `soffice.exe` 子进程**（不复用常驻进程，防内存泄漏），以 `-env:UserInstallation` 指向独立临时 profile 防单实例锁冲突；设置时长上限，超时用 **`taskkill /PID <pid> /T /F`** 回收整棵进程树（Windows 无 POSIX 进程组与 `SIGKILL`，`/T` 覆盖子进程）；并发 2，超出排队。② 结果按 `sha256` 缓存，命中由 Node 流式下发但仍过权限与审计。③ **预览与下载共用权限网关**：`GET /files/{id}/preview` 判定 view 权限后返回缓存文件流；浏览器拿不到原始对象或缓存路径（REQ-F-28）。④ 转换失败**不缓存失败结果**（避免临时故障永久污染），只计数用于健康视图；随安装包确认 CJK 字体（Windows 自带宋体/微软雅黑，需验证 PDF 内嵌），缺字体导致的排版偏移登记为 R1。
 

@@ -39,6 +39,7 @@ const STATUS_TITLES: Record<number, string> = {
   429: 'Too Many Requests',
   500: 'Internal Server Error',
   503: 'Service Unavailable',
+  507: 'Insufficient Storage',
 };
 
 export interface DomainErrorOptions {

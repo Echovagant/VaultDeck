@@ -165,6 +165,13 @@ export interface PurgeOutcome {
   reclaimedObjectPaths: string[];
 }
 
+export interface StoredObjectRecord {
+  objectId: string;
+  sha256: string;
+  sizeBytes: number;
+  relPath: string;
+}
+
 export interface StorePort {
   login(username: string, password: string): Promise<StoreLoginResult | null>;
   logout(token: string): Promise<void>;
@@ -219,4 +226,7 @@ export interface StorePort {
   purgeFile(user: StoreUser, file: StoreFile): Promise<PurgeOutcome>;
   listTrash(user: StoreUser): Promise<StoreFile[]>;
   purgeExpired(): Promise<PurgeOutcome>;
+
+  /** 完整性巡检（B7）：列出全部存储对象行 */
+  listStoredObjects(): Promise<StoredObjectRecord[]>;
 }

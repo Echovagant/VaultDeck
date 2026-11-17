@@ -6,10 +6,15 @@ import { LocalObjectStorage } from '../storage/local-object-storage';
 export const CHUNK_SIZE_BYTES = 8 * 1024 * 1024;
 export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024 * 1024;
 // 会话有效期；VD_SESSION_TTL_MS 仅供测试/演示缩短，生产保持默认
-const SESSION_TTL_MS = Number(process.env['VD_SESSION_TTL_MS'] ?? 24 * 60 * 60 * 1000);
+export const SESSION_TTL_MS = Number(process.env['VD_SESSION_TTL_MS'] ?? 24 * 60 * 60 * 1000);
+// 合并完成后的结果保留时间：让客户端能通过状态接口取回文件记录
+export const MERGE_RESULT_TTL_MS = 10 * 60 * 1000;
+
+export type UploadSessionStatus = 'uploading' | 'merging' | 'completed' | 'failed';
 
 export interface UploadSessionRecord {
   sessionId: string;
+  userId: string;
   projectId: string;
   folderId: string;
   fileName: string;
@@ -17,6 +22,11 @@ export interface UploadSessionRecord {
   chunkSize: number;
   chunkCount: number;
   received: Set<number>;
+  status: UploadSessionStatus;
+  file?: unknown;
+  error?: string;
+  mergeStartedAt?: string;
+  mergeFinishedAt?: string;
   expiresAt: string;
 }
 
@@ -26,6 +36,7 @@ export const dataRoot = path.resolve(process.env['VD_DATA_ROOT'] ?? '_private/st
 export const objectStorage = new LocalObjectStorage(dataRoot);
 
 export function createUploadSession(input: {
+  userId: string;
   projectId: string;
   folderId: string;
   fileName: string;
@@ -34,6 +45,7 @@ export function createUploadSession(input: {
   const chunkCount = Math.ceil(input.sizeBytes / CHUNK_SIZE_BYTES);
   const session: UploadSessionRecord = {
     sessionId: randomUUID(),
+    userId: input.userId,
     projectId: input.projectId,
     folderId: input.folderId,
     fileName: input.fileName,
@@ -41,6 +53,7 @@ export function createUploadSession(input: {
     chunkSize: CHUNK_SIZE_BYTES,
     chunkCount,
     received: new Set<number>(),
+    status: 'uploading',
     expiresAt: new Date(Date.now() + SESSION_TTL_MS).toISOString(),
   };
   uploadSessions.set(session.sessionId, session);
@@ -48,6 +61,7 @@ export function createUploadSession(input: {
 }
 
 export function findResumableSession(input: {
+  userId: string;
   projectId: string;
   folderId: string;
   fileName: string;
@@ -55,6 +69,8 @@ export function findResumableSession(input: {
 }): UploadSessionRecord | null {
   for (const session of uploadSessions.values()) {
     if (
+      session.userId === input.userId &&
+      session.status === 'uploading' &&
       session.projectId === input.projectId &&
       session.folderId === input.folderId &&
       session.fileName === input.fileName &&

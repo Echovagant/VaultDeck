@@ -21,6 +21,10 @@ Copy-Into $PackageDir (Join-Path $TargetHome ("releases\" + $version))
 Copy-Into (Join-Path $PackageDir 'current') (Join-Path $TargetHome 'current')
 Copy-Into (Join-Path $PackageDir 'runtime') (Join-Path $TargetHome 'runtime')
 Copy-Into (Join-Path $PackageDir 'tools') (Join-Path $TargetHome 'tools')
+# refresh WinSW per-service configs (executables stay in tools\winsw)
+foreach ($svc in @('vaultdeck-api', 'vaultdeck-web')) {
+  Copy-Item (Join-Path $TargetHome ("current\" + $svc + '.xml')) (Join-Path $TargetHome ("tools\winsw\" + $svc + '.xml')) -Force
+}
 Set-Content -Path (Join-Path $TargetHome 'current.txt') -Value $version
 
 Write-Output 'restarting services...'

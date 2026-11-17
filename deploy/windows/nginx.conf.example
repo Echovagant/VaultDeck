@@ -22,13 +22,26 @@ http {
   limit_req_zone $binary_remote_addr zone=vd_api:10m rate=50r/s;
 
   server {
+    listen 80;
+    server_name _;
+    return 301 https://$host:8443$request_uri;
+  }
+
+  server {
     listen 8443 ssl;
+    http2 on;
     server_name localhost;
 
     ssl_certificate ../certs/server.crt;
     ssl_certificate_key ../certs/server.key;
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_session_cache shared:SSL:10m;
+
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Referrer-Policy "no-referrer" always;
+    add_header Permissions-Policy "geolocation=(), microphone=(), camera=()" always;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'" always;
 
     root app;
     index index.html;

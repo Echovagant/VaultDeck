@@ -20,6 +20,7 @@ import type {
   StoreSettings,
   StoreUser,
   SettingsPatch,
+  StoredObjectRecord,
   UpdateCategoryInput,
   UpdateFolderInput,
   UpdateUserInput,
@@ -370,6 +371,20 @@ class MemoryStore implements StorePort {
     };
     this.files.set(file.fileId, file);
     return file;
+  }
+
+  async listStoredObjects(): Promise<StoredObjectRecord[]> {
+    const objects = new Map<string, StoredObjectRecord>();
+    for (const file of this.files.values()) {
+      if (!file.objectPath || !file.sha256) continue;
+      objects.set(file.objectPath, {
+        objectId: `obj-${file.sha256.slice(0, 24)}`,
+        sha256: file.sha256,
+        sizeBytes: file.sizeBytes,
+        relPath: file.objectPath,
+      });
+    }
+    return [...objects.values()];
   }
 
   async trashFile(user: StoreUser, file: StoreFile): Promise<StoreFile> {

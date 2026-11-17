@@ -2,10 +2,12 @@ import { spawn } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
+import { testCredentials as creds } from '../lib/test-credentials.mjs';
 const BASE = 'http://127.0.0.1:3000/api/v1';
 const APP = 'http://localhost:5173';
 const PORT = 9333;
-const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
+const CHROME =
+  process.env['VD_CHROME_PATH'] ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const OUT_DIR = path.resolve('_private/shots');
 const PROFILE = path.resolve('_private/chrome-profile');
 
@@ -84,7 +86,7 @@ function connect(wsUrl) {
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const token = await login('leader', 'leader123');
+const token = await login('leader', creds.leader);
 
 try {
   await waitForChrome();

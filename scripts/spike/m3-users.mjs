@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 
+import { testCredentials as creds } from '../lib/test-credentials.mjs';
 const BASE = 'http://127.0.0.1:3000/api/v1';
 
 async function login(username, password) {
@@ -11,11 +12,11 @@ async function login(username, password) {
   return { status: response.status, body: await response.json() };
 }
 
-const leaderLogin = await login('leader', 'leader123');
+const leaderLogin = await login('leader', creds.leader);
 assert.equal(leaderLogin.status, 200);
 const leader = leaderLogin.body.token;
 
-const memberLogin = await login('member', 'member123');
+const memberLogin = await login('member', creds.member);
 const member = memberLogin.body.token;
 
 const listResponse = await fetch(`${BASE}/users`, {

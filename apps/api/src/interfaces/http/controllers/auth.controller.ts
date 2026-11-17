@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Headers,
   HttpCode,
@@ -12,7 +13,7 @@ import {
   Res,
 } from '@nestjs/common';
 import { createReadStream } from 'node:fs';
-import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import type { FastifyReply } from 'fastify';
@@ -247,6 +248,26 @@ export class AuthController {
     });
 
     return { avatarUrl: avatarUrl(user.userId) };
+  }
+
+  @Delete('avatar')
+  @HttpCode(204)
+  async deleteAvatar(@Headers('authorization') authorization?: string) {
+    const user = await requireUser(authorization);
+    const existed = await hasAvatar(user.userId);
+    await rm(avatarPath(user.userId), { force: true });
+    await rm(avatarMimePath(user.userId), { force: true });
+    if (existed) {
+      await store.recordAudit({
+        actor: user,
+        action: 'user.avatar_delete',
+        objectType: 'user',
+        objectId: user.userId,
+        result: 'success',
+        detail: 'avatar removed',
+      });
+    }
+    return undefined;
   }
 
   @Get('avatar/:userId')

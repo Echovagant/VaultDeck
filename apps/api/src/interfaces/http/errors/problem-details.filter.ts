@@ -10,6 +10,8 @@ import { randomUUID } from 'node:crypto';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 
 import { DomainError, toProblem, type ProblemDetails } from './problem-details';
+import { recordServerError } from '../../../infrastructure/ops/alert-state';
+import { logger } from '../../../infrastructure/logging/logger';
 
 interface RequestWithId extends FastifyRequest {
   requestId?: string;
@@ -45,7 +47,15 @@ export class ProblemDetailsFilter implements ExceptionFilter {
     const problem = this.normalize(exception, requestId);
 
     if (problem.status >= 500) {
+      recordServerError();
       this.logger.error(`[${requestId}] ${problem.code} ${problem.detail ?? problem.title}`);
+      logger.error('api.error', {
+        requestId,
+        code: problem.code,
+        status: problem.status,
+        method: request.method,
+        path: request.url.split('?')[0],
+      });
     }
 
     reply

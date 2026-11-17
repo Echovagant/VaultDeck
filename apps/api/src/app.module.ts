@@ -14,6 +14,7 @@ import { TrashController } from './interfaces/http/controllers/trash.controller'
 import { UploadController } from './interfaces/http/controllers/upload.controller';
 import { UsersController } from './interfaces/http/controllers/users.controller';
 import { SystemSettingsController } from './interfaces/http/controllers/settings.controller';
+import { SystemIntegrityController } from './interfaces/http/controllers/system-integrity.controller';
 
 @Module({
   controllers: [
@@ -31,6 +32,7 @@ import { SystemSettingsController } from './interfaces/http/controllers/settings
     UsersController,
     CategoriesController,
     SystemSettingsController,
+    SystemIntegrityController,
   ],
 })
 export class AppModule {}

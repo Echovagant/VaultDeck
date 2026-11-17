@@ -112,6 +112,12 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
+    delete:
+      tags: [auth]
+      operationId: deleteAvatar
+      responses:
+        '204': { description: 已移除头像，恢复默认占位 }
+        '401': { $ref: '#/components/responses/Unauthorized' }
   /auth/avatar/{userId}:
     get:
       tags: [auth]
@@ -546,6 +552,11 @@ paths:
       operationId: completeUpload
       parameters:
         - $ref: '#/components/parameters/SessionId'
+        - name: Prefer
+          in: header
+          required: false
+          schema: { type: string, example: respond-async }
+          description: 传 respond-async 时立即返回 202，客户端通过 GET /upload-sessions/{sessionId} 轮询合并状态
       requestBody:
         required: true
         content:
@@ -1166,6 +1177,8 @@ components:
           items: { type: integer, minimum: 0 }
         receivedBytes: { type: integer, minimum: 0 }
         expiresAt: { type: string, format: date-time }
+        file: { $ref: '#/components/schemas/File' }
+        error: { type: string }
     ChunkReceipt:
       type: object
       required: [chunkIndex, receivedBytes]
@@ -1309,19 +1322,31 @@ components:
       type: object
       required: [status, uptimeSeconds]
       properties:
-        status: { type: string }
+        status: { type: string, enum: [ok, degraded] }
         uptimeSeconds: { type: integer, minimum: 0 }
-        storageVolumeFreeBytes: { type: integer }
         activeSessions: { type: integer, minimum: 0 }
-        errorsLast24h: { type: integer, minimum: 0 }
-        lastJobs:
+        storageVolumeFreeBytes: { type: integer, nullable: true }
+        storage:
+          type: object
+          nullable: true
+          properties:
+            totalBytes: { type: integer }
+            freeBytes: { type: integer }
+            usedPercent: { type: number }
+            writeBlocked: { type: boolean }
+        errors24h: { type: integer, minimum: 0 }
+        alerts:
           type: array
           items:
             type: object
             properties:
-              name: { type: string }
-              lastRunAt: { type: string, format: date-time }
-              result: { type: string }
+              code: { type: string }
+              level: { type: string, enum: [warning, critical] }
+              message: { type: string }
+        preview:
+          type: object
+          properties:
+            officeServer: { type: boolean }
     Settings:
       type: object
       properties:

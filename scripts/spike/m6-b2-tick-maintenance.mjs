@@ -180,6 +180,7 @@ try {
   server.stderr.on('data', (chunk) => (serverStdout += chunk));
   await waitStdout(server, /listening/, 45_000);
 
+  // 本脚本自建临时库并 VD_BOOTSTRAP_DEMO=true，用的是代码种子口令，不读本机轮换后的凭据
   const leader = (await (await fetch(`${BASE}/auth/login`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },

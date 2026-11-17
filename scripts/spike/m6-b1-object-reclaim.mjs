@@ -8,6 +8,7 @@ import { stat } from 'node:fs/promises';
 
 import { Client } from 'pg';
 
+import { testCredentials as creds } from '../lib/test-credentials.mjs';
 const BASE = 'http://127.0.0.1:3000/api/v1';
 
 async function login(username, password) {
@@ -112,7 +113,7 @@ assert.ok(
   '需要 VD_DATABASE_URL（与后端 VD_STORE=postgres 同库）',
 );
 
-const leader = await login('leader', 'leader123');
+const leader = await login('leader', creds.leader);
 
 const projects = (await json('/projects', leader)).body.items;
 assert.ok(projects.length >= 1, 'Leader 应至少可见 1 个项目');

@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict';
 import { createHash, randomBytes } from 'node:crypto';
 
+import { testCredentials as creds } from '../lib/test-credentials.mjs';
 const BASE = 'http://127.0.0.1:3000/api/v1';
 
 async function login() {
   const response = await fetch(`${BASE}/auth/login`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ username: 'leader', password: 'leader123' }),
+    body: JSON.stringify({ username: 'leader', password: creds.leader }),
   });
   const data = await response.json();
   return data.token;

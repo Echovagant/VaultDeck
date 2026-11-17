@@ -145,7 +145,7 @@ export class FilesController {
     try {
       pdfPath = await previewAdapter.convertToPdf({
         fileId: file.fileId,
-        objectPath: file.objectPath,
+        objectPath: objectStorage.resolve(file.objectPath),
       });
     } catch {
       throw new DomainError('SYS', 'VD-SYS-502', 'Office 预览暂不可用，请下载后查看', {

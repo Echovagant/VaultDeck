@@ -1,4 +1,5 @@
 import type { StorePort } from '../../application/ports/store.port';
+import { errorMessage, logger } from '../logging/logger';
 import { objectStorage, sweepExpiredUploadSessions } from '../memory/upload-sessions';
 import { purgeOldBundles } from '../storage/bundle-store';
 
@@ -10,10 +11,6 @@ const TICK_MS = Number(process.env['VD_MAINTENANCE_TICK_MS'] ?? MINUTE_MS);
 const MAINTENANCE_INTERVAL_MS = Number(
   process.env['VD_MAINTENANCE_INTERVAL_MS'] ?? HOUR_MS,
 );
-
-function log(line: string): void {
-  process.stdout.write(`[vaultdeck:maintenance] ${line}\n`);
-}
 
 export interface MaintenanceReport {
   purgedFiles: number;
@@ -32,9 +29,10 @@ async function reclaimObjects(objectPaths: string[]): Promise<number> {
         reclaimed += 1;
       })
       .catch((error: unknown) => {
-        log(
-          `磁盘对象删除失败：${objectPath} ${error instanceof Error ? error.message : String(error)}`,
-        );
+        logger.warn('maintenance.object_delete_failed', {
+          relPath: objectPath,
+          error: errorMessage(error),
+        });
       });
   }
   return reclaimed;
@@ -59,9 +57,7 @@ export async function runMaintenanceOnce(store: StorePort): Promise<MaintenanceR
     report.expiredSessions > 0 ||
     report.expiredBundles > 0
   ) {
-    log(
-      `purge_files=${report.purgedFiles} reclaimed_objects=${report.reclaimedObjects} expired_sessions=${report.expiredSessions} expired_bundles=${report.expiredBundles}`,
-    );
+    logger.info('maintenance.run', { ...report });
   }
   return report;
 }
@@ -79,7 +75,7 @@ export function startMaintenanceScheduler(store: StorePort): { stop(): void } {
       lastRunAt = Date.now();
     })
     .catch((error: unknown) => {
-      log(`启动首跑失败：${error instanceof Error ? error.message : String(error)}`);
+      logger.error('maintenance.startup_failed', { error: errorMessage(error) });
     });
 
   const timer = setInterval(() => {
@@ -89,7 +85,7 @@ export function startMaintenanceScheduler(store: StorePort): { stop(): void } {
     lastRunAt = Date.now();
     void runMaintenanceOnce(store)
       .catch((error: unknown) => {
-        log(`维护任务执行失败：${error instanceof Error ? error.message : String(error)}`);
+        logger.error('maintenance.run_failed', { error: errorMessage(error) });
       })
       .finally(() => {
         running = false;
@@ -97,6 +93,9 @@ export function startMaintenanceScheduler(store: StorePort): { stop(): void } {
   }, TICK_MS);
   timer.unref();
 
-  log(`scheduler started tick=${TICK_MS}ms interval=${MAINTENANCE_INTERVAL_MS}ms`);
+  logger.info('maintenance.scheduler_started', {
+    tickMs: TICK_MS,
+    intervalMs: MAINTENANCE_INTERVAL_MS,
+  });
   return { stop: () => clearInterval(timer) };
 }

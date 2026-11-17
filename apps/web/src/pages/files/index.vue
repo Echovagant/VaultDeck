@@ -66,7 +66,7 @@
             </a-button>
             <h2 class="files-title">{{ currentFolderName || projectName || '项目资料' }}</h2>
             <a-dropdown>
-              <a-button type="primary">
+              <a-button type="primary" :title="uploadHint">
                 上传
                 <DownOutlined />
               </a-button>
@@ -130,6 +130,16 @@
         <div v-if="uploading" class="progress-box">
           <a-progress :percent="percent" :status="percent === 100 ? 'success' : 'active'" />
           <p class="phase">{{ currentFileName }} · {{ phase }}</p>
+          <p v-if="instantHit" class="transfer-stats">
+            秒传命中：未传输文件内容，校验+命中耗时 {{ formatElapsed(instantElapsedMs) }}
+          </p>
+          <p v-else-if="uploadSpeed > 0" class="transfer-stats">
+            {{ formatSpeed(uploadSpeed) }}
+            <template v-if="uploadEta !== undefined"> · 预计剩余 {{ formatEta(uploadEta) }}</template>
+          </p>
+          <p v-else class="transfer-stats">
+            首次上传按实际大小传输，速率受文件大小、磁盘与网络限制
+          </p>
         </div>
 
         <div v-if="viewMode === 'grid'" class="grid-area">
@@ -440,6 +450,38 @@ const uploading = ref(false);
 const percent = ref(0);
 const phase = ref('');
 const currentFileName = ref('');
+const uploadSpeed = ref(0);
+const uploadEta = ref<number | undefined>(undefined);
+const instantHit = ref(false);
+const instantElapsedMs = ref(0);
+const maxUploadBytes = ref<number | null>(null);
+const instantUploadEnabled = ref(true);
+
+const uploadHint = computed(() => {
+  const limit = maxUploadBytes.value ? `单文件上限 ${formatBytes(maxUploadBytes.value)}；` : '';
+  const instant = instantUploadEnabled.value
+    ? '秒传仅命中已存在的相同文件'
+    : '秒传当前已关闭';
+  return `${instant}；${limit}首次上传按实际大小传输，速率以进度旁实测为准`;
+});
+
+function formatSpeed(bytesPerSecond: number): string {
+  return `${formatBytes(Math.round(bytesPerSecond))}/s`;
+}
+
+function formatEta(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds <= 0) return '—';
+  const total = Math.max(1, Math.round(seconds));
+  if (total < 60) return `${total} 秒`;
+  const minutes = Math.floor(total / 60);
+  if (minutes < 60) return `${minutes} 分 ${total % 60} 秒`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours} 小时 ${minutes % 60} 分`;
+}
+
+function formatElapsed(ms: number): string {
+  return ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} 秒`;
+}
 
 const importVisible = ref(false);
 const importResults = ref<ImportResult[]>([]);
@@ -686,6 +728,21 @@ async function loadAll(): Promise<void> {
   await loadFiles();
 }
 
+interface UploadSettingsResponse {
+  maxUploadBytes: number;
+  instantUploadEnabled: boolean;
+}
+
+async function loadUploadSettings(): Promise<void> {
+  try {
+    const settings = await api<UploadSettingsResponse>('/system/settings');
+    maxUploadBytes.value = settings.maxUploadBytes;
+    instantUploadEnabled.value = settings.instantUploadEnabled;
+  } catch {
+    // 非关键提示信息，失败时保持通用文案
+  }
+}
+
 function onUploadMenu({ key }: { key: string }): void {
   if (key === 'files') pickFiles();
   else pickDirectory();
@@ -753,9 +810,17 @@ async function onFilesPicked(event: Event): Promise<void> {
       currentFileName.value = file.name;
       percent.value = 0;
       phase.value = '准备中';
+      uploadSpeed.value = 0;
+      uploadEta.value = undefined;
+      instantHit.value = false;
+      instantElapsedMs.value = 0;
       await uploadFile(file, projectId, targetFolder, (progress) => {
         percent.value = progress.percent;
         phase.value = progress.phase;
+        uploadSpeed.value = progress.bytesPerSecond ?? 0;
+        uploadEta.value = progress.etaSeconds;
+        instantHit.value = progress.instant === true;
+        instantElapsedMs.value = progress.elapsedMs ?? 0;
       });
       message.success(`${file.name} 上传完成`);
     }
@@ -767,6 +832,10 @@ async function onFilesPicked(event: Event): Promise<void> {
     currentFileName.value = '';
     phase.value = '';
     percent.value = 0;
+    uploadSpeed.value = 0;
+    uploadEta.value = undefined;
+    instantHit.value = false;
+    instantElapsedMs.value = 0;
   }
 }
 
@@ -826,6 +895,10 @@ async function onDirPicked(event: Event): Promise<void> {
     currentFileName.value = '';
     phase.value = '';
     percent.value = 0;
+    uploadSpeed.value = 0;
+    uploadEta.value = undefined;
+    instantHit.value = false;
+    instantElapsedMs.value = 0;
   }
 }
 
@@ -918,6 +991,7 @@ onMounted(async () => {
   if (typeof queryFolderId === 'string' && queryFolderId.length > 0) {
     folderId.value = queryFolderId;
   }
+  void loadUploadSettings();
   await onMountedLoad();
 });
 </script>
@@ -1228,6 +1302,13 @@ onMounted(async () => {
   margin: 6px 0 0;
   color: var(--vd-text-secondary);
   font-size: 12px;
+}
+
+.transfer-stats {
+  margin: 2px 0 0;
+  color: var(--vd-text-secondary);
+  font-size: 11px;
+  letter-spacing: 0.02em;
 }
 
 .files-bottom {

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 
+import { testCredentials as creds } from '../lib/test-credentials.mjs';
 const BASE = 'http://127.0.0.1:3000/api/v1';
 
 async function login(username, password) {
@@ -20,7 +21,7 @@ async function call(pathname, headers, init = {}) {
   return { status: response.status, body: text ? JSON.parse(text) : null };
 }
 
-const leader = await login('leader', 'leader123');
+const leader = await login('leader', creds.leader);
 assert.equal(leader.status, 200, JSON.stringify(leader.body));
 const leaderAuth = { authorization: `Bearer ${leader.body.token}` };
 
@@ -29,11 +30,11 @@ assert.equal(users.status, 200);
 const member = users.body.items.find((item) => item.username === 'member');
 assert.ok(member, '未找到 member 账号');
 
-const memberLogin = await login('member', 'member123');
+const memberLogin = await login('member', creds.member);
 assert.equal(memberLogin.status, 200, JSON.stringify(memberLogin.body));
 const memberAuth = { authorization: `Bearer ${memberLogin.body.token}` };
 
-const deputy = await login('deputy', 'deputy123');
+const deputy = await login('deputy', creds.deputy);
 assert.equal(deputy.status, 200, JSON.stringify(deputy.body));
 const deputyAuth = { authorization: `Bearer ${deputy.body.token}` };
 
@@ -61,7 +62,7 @@ assert.equal(reset.status, 200, JSON.stringify(reset.body));
 const oldSession = await call('/auth/me', memberAuth);
 assert.equal(oldSession.status, 401, '重置口令后原会话应失效');
 
-const oldPassword = await login('member', 'member123');
+const oldPassword = await login('member', creds.member);
 assert.equal(oldPassword.status, 401, '旧口令应失效');
 
 const newLogin = await login('member', 'MemberTemp123');
@@ -70,11 +71,11 @@ assert.equal(newLogin.status, 200, JSON.stringify(newLogin.body));
 const restore = await call(`/users/${member.userId}`, leaderAuth, {
   method: 'PATCH',
   headers: { 'content-type': 'application/json' },
-  body: JSON.stringify({ password: 'member123' }),
+  body: JSON.stringify({ password: creds.member }),
 });
 assert.equal(restore.status, 200);
 
-const restored = await login('member', 'member123');
+const restored = await login('member', creds.member);
 assert.equal(restored.status, 200, JSON.stringify(restored.body));
 
 const leaderStillValid = await call('/auth/me', leaderAuth);

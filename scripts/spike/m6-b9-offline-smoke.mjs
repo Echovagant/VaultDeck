@@ -136,7 +136,14 @@ try {
     migrate.on('error', reject);
   });
   assert.equal(migrateExit, 0, `包内迁移失败：${migrateOut.slice(-1000)}`);
-  assert.match(migrateOut, /applied_total=5/, `应应用全部 5 个迁移：${migrateOut}`);
+  const migrationCount = (
+    await readdir(path.join(pkg, 'current', 'migrations'))
+  ).filter((name) => name.endsWith('.up.sql')).length;
+  assert.match(
+    migrateOut,
+    new RegExp(`applied_total=${migrationCount}`),
+    `应应用全部 ${migrationCount} 个迁移：${migrateOut}`,
+  );
   log('包内迁移通过（bundled node + VD_MIGRATIONS_DIR）');
 
   // 2) 包内 node 启动后端
@@ -147,13 +154,18 @@ try {
   });
   server.stdout.on('data', (chunk) => (serverStdout += chunk));
   server.stderr.on('data', (chunk) => (serverStdout += chunk));
-  await waitStdout(server, /listening/, 45_000);
-  assert.match(serverStdout, /\[vaultdeck:maintenance\] scheduler started/, '维护调度器应随包启动');
+  await waitStdout(server, /api\.started/, 45_000);
+  assert.match(
+    serverStdout,
+    /maintenance\.scheduler_started/,
+    '维护调度器应随包启动',
+  );
   log('包内后端启动通过（node_modules 闭包完整、B3 门禁兼容 VD_MIGRATIONS_DIR）');
 
   // 3) 健康检查 + 登录 + 回收站列表
   const health = await fetch(`${BASE}/system/health`);
   assert.equal(health.status, 200, `system/health 应 200：${await health.text()}`);
+  // 冒烟库是包内迁移新建的空库 + VD_BOOTSTRAP_DEMO=true，故使用代码种子口令
   const login = await fetch(`${BASE}/auth/login`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },

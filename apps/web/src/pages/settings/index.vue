@@ -34,7 +34,10 @@
           </a-form-item>
           <a-form-item label="启用秒传">
             <a-switch v-model:checked="form.instantUploadEnabled" />
-            <p class="settings-hint">关闭后同哈希文件也会重新上传，不再命中已有内容。</p>
+            <p class="settings-hint">
+              仅对系统中已存在的相同文件生效（校验同哈希后不再传输内容）；单文件上限
+              {{ form.maxUploadGb }} GB。命中前仍需在浏览器计算文件指纹，大文件需要数十秒；首次上传按实际大小传输，速率以进度旁实测为准。
+            </p>
           </a-form-item>
         </a-form>
       </div>

@@ -51,7 +51,7 @@
               v-model:value="form.username"
               size="large"
               autocomplete="username"
-              placeholder="leader"
+              placeholder="请输入用户名"
             />
           </a-form-item>
 
@@ -74,10 +74,10 @@
         </a-form>
 
         <div class="login-hint">
-          <div class="login-hint-title">开发期演示账号</div>
-          <div class="login-hint-row"><span>领队</span><code>leader / leader123</code></div>
-          <div class="login-hint-row"><span>执行领队</span><code>deputy / deputy123</code></div>
-          <div class="login-hint-row"><span>队员</span><code>member / member123</code></div>
+          <div class="login-hint-title">账号说明</div>
+          <div class="login-hint-text">
+            账号由领队统一创建，系统不开放自助注册；忘记口令请联系领队重置。
+          </div>
         </div>
       </div>
 
@@ -100,7 +100,7 @@ import { useSessionStore } from '@/stores/session';
 const session = useSessionStore();
 const router = useRouter();
 
-const form = reactive({ username: 'leader', password: 'leader123' });
+const form = reactive({ username: '', password: '' });
 const loading = ref(false);
 
 async function onSubmit(): Promise<void> {
@@ -293,17 +293,8 @@ async function onSubmit(): Promise<void> {
   text-transform: uppercase;
 }
 
-.login-hint-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 3px 0;
-}
-
-.login-hint-row code {
-  color: var(--vd-accent-deep);
-  font-family: var(--vd-font-mono);
-  font-size: 11px;
+.login-hint-text {
+  line-height: 1.8;
 }
 
 .login-footer {

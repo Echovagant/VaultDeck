@@ -12,8 +12,17 @@ export class LocalObjectStorage {
     return path.join(this.root, 'chunks', sessionId);
   }
 
+  private objectKey(sha256: string): string {
+    return `objects/${sha256.slice(0, 2)}/${sha256}.bin`;
+  }
+
   private objectPath(sha256: string): string {
-    return path.join(this.root, 'objects', sha256.slice(0, 2), `${sha256}.bin`);
+    return this.resolve(this.objectKey(sha256));
+  }
+
+  /** 数据库只存相对 dataRoot 的键；兼容迁移前的历史绝对路径 */
+  resolve(relPath: string): string {
+    return path.isAbsolute(relPath) ? relPath : path.resolve(this.root, relPath);
   }
 
   async saveChunk(sessionId: string, index: number, data: Buffer): Promise<void> {
@@ -59,7 +68,7 @@ export class LocalObjectStorage {
       throw new ChecksumMismatch(`期望 ${expectedSha256}，实际 ${actual}`);
     }
 
-    return { objectPath: target, sizeBytes };
+    return { objectPath: this.objectKey(expectedSha256), sizeBytes };
   }
 
   async objectExists(sha256: string): Promise<boolean> {
@@ -73,14 +82,15 @@ export class LocalObjectStorage {
 
   /** 删除存储对象文件；对象按 sha 前两位分桶，删空后顺带移除空目录 */
   async deleteObject(objectPath: string): Promise<void> {
-    await rm(objectPath, { force: true });
-    await rmdir(path.dirname(objectPath)).catch(() => {
+    const target = this.resolve(objectPath);
+    await rm(target, { force: true });
+    await rmdir(path.dirname(target)).catch(() => {
       // 目录非空或不存在均忽略
     });
   }
 
   openRange(objectPath: string, start: number, end: number): NodeJS.ReadableStream {
-    return createReadStream(objectPath, { start, end });
+    return createReadStream(this.resolve(objectPath), { start, end });
   }
 
   async cleanupSession(sessionId: string): Promise<void> {

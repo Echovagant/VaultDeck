@@ -22,6 +22,7 @@ import type {
   StoreSettings,
   StoreUser,
   SettingsPatch,
+  StoredObjectRecord,
   UpdateCategoryInput,
   UpdateFolderInput,
   UpdateUserInput,
@@ -643,6 +644,21 @@ export class PgStore implements StorePort {
     const result = await this.pool.query<FileRow>(`${FILE_SELECT} WHERE f.file_id = $1`, [fileId]);
     const row = result.rows[0];
     return row ? mapFile(row) : null;
+  }
+
+  async listStoredObjects(): Promise<StoredObjectRecord[]> {
+    const result = await this.pool.query<{
+      object_id: string;
+      sha256: string;
+      size_bytes: string;
+      rel_path: string;
+    }>('SELECT object_id, sha256, size_bytes, rel_path FROM stored_object ORDER BY object_id');
+    return result.rows.map((row) => ({
+      objectId: row.object_id,
+      sha256: row.sha256.trim(),
+      sizeBytes: Number(row.size_bytes),
+      relPath: row.rel_path,
+    }));
   }
 
   async addFile(input: AddFileInput): Promise<StoreFile> {

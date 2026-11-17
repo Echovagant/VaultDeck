@@ -11,9 +11,20 @@
         {{ initials }}
       </a-avatar>
       <div class="avatar-actions">
-        <a-upload :show-upload-list="false" accept="image/png,image/jpeg" :before-upload="onAvatar">
-          <a-button size="small" :loading="uploading">更换头像</a-button>
-        </a-upload>
+        <div class="avatar-buttons">
+          <a-upload :show-upload-list="false" accept="image/png,image/jpeg" :before-upload="onAvatar">
+            <a-button size="small" :loading="uploading">更换头像</a-button>
+          </a-upload>
+          <a-button
+            v-if="session.user?.avatarUrl"
+            size="small"
+            danger
+            :loading="removingAvatar"
+            @click="removeAvatar"
+          >
+            移除头像
+          </a-button>
+        </div>
         <p class="hint">PNG / JPEG，不超过 2 MB</p>
       </div>
     </div>
@@ -57,6 +68,7 @@ const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>();
 const session = useSessionStore();
 const displayName = ref('');
 const uploading = ref(false);
+const removingAvatar = ref(false);
 const savingProfile = ref(false);
 const savingPwd = ref(false);
 const pwd = reactive({ current: '', next: '', confirm: '' });
@@ -90,6 +102,18 @@ async function onAvatar(file: File): Promise<boolean> {
     uploading.value = false;
   }
   return false;
+}
+
+async function removeAvatar(): Promise<void> {
+  removingAvatar.value = true;
+  try {
+    await session.removeAvatar();
+    message.success('头像已移除');
+  } catch (error) {
+    message.error(error instanceof ApiError ? error.message : '移除头像失败');
+  } finally {
+    removingAvatar.value = false;
+  }
 }
 
 async function saveProfile(): Promise<void> {
@@ -149,6 +173,11 @@ async function savePassword(): Promise<void> {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.avatar-buttons {
+  display: flex;
+  gap: 8px;
 }
 
 .hint {

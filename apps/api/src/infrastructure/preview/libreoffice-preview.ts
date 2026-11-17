@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { mkdir, rename, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -19,12 +20,16 @@ export class LibreOfficePreview {
 
   constructor(private readonly options: LibreOfficeOptions) {}
 
+  private available(): boolean {
+    return this.options.sofficePath.length > 0 && existsSync(this.options.sofficePath);
+  }
+
   capabilities(): { supported: boolean; formats: string[] } {
-    return { supported: this.options.sofficePath.length > 0, formats: OFFICE_EXTENSIONS };
+    return { supported: this.available(), formats: OFFICE_EXTENSIONS };
   }
 
   supports(fileName: string): boolean {
-    return OFFICE_EXTENSIONS.includes(fileExtension(fileName));
+    return this.available() && OFFICE_EXTENSIONS.includes(fileExtension(fileName));
   }
 
   async convertToPdf(input: { fileId: string; objectPath: string }): Promise<string> {

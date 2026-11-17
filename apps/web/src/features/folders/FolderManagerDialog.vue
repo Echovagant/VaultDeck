@@ -29,9 +29,11 @@
       <template #bodyCell="{ column, record }">
         <template v-if="column.key === 'parent'">{{ parentName(record) }}</template>
         <template v-else-if="column.key === 'actions'">
-          <a-button type="link" @click="startRename(record)">重命名</a-button>
-          <a-button type="link" @click="startMove(record)">移动</a-button>
-          <a-button type="link" danger @click="remove(record)">删除</a-button>
+          <div class="row-actions">
+            <a-button type="link" class="row-action-muted" @click="startRename(record)">重命名</a-button>
+            <a-button type="link" class="row-action-muted" @click="startMove(record)">移动</a-button>
+            <a-button type="link" danger @click="remove(record)">删除</a-button>
+          </div>
         </template>
       </template>
     </a-table>
@@ -264,5 +266,25 @@ watch(
 
 .parent-select {
   width: 200px;
+}
+
+.row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.row-actions :deep(.ant-btn-link) {
+  height: auto;
+  padding: 0;
+  font-size: 13px;
+}
+
+.row-action-muted {
+  color: var(--vd-text-secondary);
+}
+
+.row-action-muted:hover {
+  color: var(--vd-accent) !important;
 }
 </style>

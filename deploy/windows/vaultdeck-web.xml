@@ -7,7 +7,7 @@
   <workingdirectory>%VAULTDECK_HOME%\tools\nginx</workingdirectory>
   <logpath>%VAULTDECK_HOME%\logs</logpath>
   <log mode="roll-by-size">
-    <sizeThreshold>10485760</sizeThreshold>
+    <sizeThreshold>10240</sizeThreshold>
     <keepFiles>8</keepFiles>
   </log>
 </service>

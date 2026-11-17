@@ -2,13 +2,16 @@
 // %VAULTDECK_HOME% 的完整发布目录（current / runtime / tools + 安装脚本 + SHA256SUMS）。
 // 用法：node scripts/release/build-offline-package.mjs [--version vX] [--out releases]
 //       [--downloads _private/downloads] [--node-version 24.16.0]
-//       [--skip-libreoffice] [--no-build]
+//       [--with-libreoffice] [--no-build]
+// 默认不打包 LibreOffice：docx/xlsx/pdf 由浏览器端渲染，Office 服务端转换作为可选高保真能力。
+// 体积约束：PostgreSQL 只收 bin/lib/share（剔除 pgAdmin 4/doc/include/StackBuilder，约省 808 MB）；
+//           后端 node_modules 只收 @vaultdeck/api 的生产闭包（不再带入 web 的前端依赖）。
 // 约束：nginx/winsw 的 SHA256 必须与 deploy/windows/versions.md 一致，不匹配立即中止；
-//       Node 便携运行时从 npmmirror 二进制镜像下载并用官方 SHASUMS256 校验。
+//       Node 便携运行时从官方 nodejs.org 下载（可用 VD_NODE_MIRROR 覆盖）并用 SHASUMS256 校验。
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { cp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readdir, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -20,9 +23,9 @@ const EXPECTED_SHA256 = {
   'nginx-1.30.6.zip': 'c6ee35edb0a861063323f709192ae50d1eefaf2ea7d00678bd2b22d8542dc61e',
   'winsw-2.11.0.nupkg': 'b73c6c10ee634a782cb74024a4d802a6214647e44c432a2cc34b360c64f84766',
 };
-const NODE_MIRROR = 'https://registry.npmmirror.com/-/binary/node';
+const NODE_MIRROR = process.env['VD_NODE_MIRROR'] ?? 'https://nodejs.org/dist';
 // 显式用 System32 的 bsdtar（可解 zip）；PATH 里的 GNU tar（Git Bash）不认 zip
-const TAR_EXE = path.join(process.env['SystemRoot'] ?? 'C:\\Windows', 'System32', 'tar.exe');
+const TAR_EXE = path.join(process.env['SystemRoot'] ?? '', 'System32', 'tar.exe');
 
 function log(line) {
   process.stdout.write(`[pack] ${line}\n`);
@@ -66,7 +69,7 @@ async function downloadTo(url, dest) {
 }
 
 // tar.exe（Windows 10+ 内置 bsdtar）可直接解 zip，比 Expand-Archive 快得多。
-// 注意：bsdtar 会把含盘符的绝对路径（F:\...）解析成远程主机（Cannot connect to F），
+// 注意：bsdtar 会把含盘符的绝对路径解析成远程主机（Cannot connect to F），
 // 必须用相对路径 + cwd 规避；跨盘时回退 Expand-Archive。
 async function extractZip(zipPath, destDir) {
   await mkdir(destDir, { recursive: true });
@@ -99,6 +102,29 @@ async function copyTree(src, dest) {
   await cp(src, dest, { recursive: true });
 }
 
+// PostgreSQL 只需要服务器运行时（bin/lib/share）；EDB 二进制包里的 pgAdmin 4、doc、
+// include、StackBuilder 与运行无关，pgAdmin 单独就占约 779 MB，不进入离线包。
+const PG_RUNTIME_DIRS = new Set(['bin', 'lib', 'share']);
+
+async function copyPostgresRuntime(src, dest) {
+  await mkdir(dest, { recursive: true });
+  const skipped = [];
+  for (const entry of await readdir(src, { withFileTypes: true })) {
+    const from = path.join(src, entry.name);
+    const to = path.join(dest, entry.name);
+    if (entry.isDirectory()) {
+      if (!PG_RUNTIME_DIRS.has(entry.name)) {
+        skipped.push(entry.name);
+        continue;
+      }
+      await cp(from, to, { recursive: true });
+    } else {
+      await cp(from, to);
+    }
+  }
+  return skipped;
+}
+
 // 按文件名模式在解包目录里找第一个匹配的文件
 async function findFileMatching(rootDir, pattern) {
   const entries = await readdir(rootDir, { withFileTypes: true });
@@ -126,7 +152,9 @@ async function main() {
   const outRoot = path.resolve(ROOT, valueOf('--out') ?? 'releases');
   const downloadsDir = path.resolve(ROOT, valueOf('--downloads') ?? '_private/downloads');
   const nodeVersion = valueOf('--node-version') ?? '24.16.0';
-  const skipLibreOffice = flag('--skip-libreoffice');
+  const withLibreOffice = flag('--with-libreoffice');
+  // 保留旧参数兼容：显式 --skip-libreoffice 仍表示不打包
+  const skipLibreOffice = !withLibreOffice || flag('--skip-libreoffice');
   const noBuild = flag('--no-build');
 
   const staging = path.join(outRoot, `${version}-offline`);
@@ -168,36 +196,47 @@ async function main() {
   }
   await copyTree(path.join(ROOT, 'apps/api/package.json'), path.join(current, 'api', 'package.json'));
 
-  log('assembling production node_modules from package-lock ...');
-  // 两类条目都要收：根 hoisted（node_modules/*）与 per-workspace 嵌套安装（apps/api/node_modules/*）。
-  // 只看根会漏掉被 npm 装进 apps/api 的依赖（如 ajv@8 在根上被 dev 包的 ajv@6 抢了 hoist 位）。
-  const lock = JSON.parse(await readFile(path.join(ROOT, 'package-lock.json'), 'utf8'));
-  const prodEntries = [];
-  for (const [key, meta] of Object.entries(lock.packages ?? {})) {
-    if (meta.dev || meta.devOptional) continue;
-    if (key.startsWith('node_modules/')) {
-      if (key.includes('node_modules/@vaultdeck/') || key.endsWith('node_modules/.bin')) continue;
-      prodEntries.push([key, path.join('current/api', key)]);
-    } else if (key.startsWith('apps/api/node_modules/')) {
-      const rel = key.slice('apps/api/'.length);
-      if (rel.includes('node_modules/@vaultdeck/') || rel.endsWith('node_modules/.bin')) continue;
-      prodEntries.push([key, path.join('current/api', rel)]);
+  log('resolving production node_modules closure for @vaultdeck/api ...');
+  // 只收 @vaultdeck/api 的运行时闭包：旧实现按 package-lock 全量 prod 条目复制，会把 web
+  // 工作区的 ant-design-vue / exceljs / vue 等前端依赖一起打进 current/api（约多 137 MB）。
+  const listing = await run('npm ls --omit=dev --workspace @vaultdeck/api --all --parseable', {
+    capture: true,
+  });
+  const resolved = new Map();
+  const apiNodeModules = path.join('apps', 'api', 'node_modules') + path.sep;
+  const rootNodeModules = 'node_modules' + path.sep;
+  const apiWorkspace = path.join('apps', 'api') + path.sep;
+  for (const line of listing.out.split(/\r?\n/)) {
+    const packagePath = line.trim();
+    if (!packagePath || !packagePath.startsWith(`${ROOT}${path.sep}`)) continue;
+    const rel = path.relative(ROOT, packagePath);
+    let destRel;
+    if (rel.startsWith(apiNodeModules)) {
+      destRel = path.join('current/api', rel.slice(apiWorkspace.length));
+    } else if (rel.startsWith(rootNodeModules)) {
+      destRel = path.join('current/api', rel);
+    } else {
+      continue; // 仓库根、其他 workspace、源码目录
+    }
+    if (destRel.includes(`${path.sep}@vaultdeck${path.sep}`) || destRel.endsWith(`${path.sep}.bin`)) {
+      continue;
+    }
+    const priority = rel.startsWith(apiNodeModules) ? 1 : 0;
+    const previous = resolved.get(destRel);
+    if (!previous || priority > previous.priority) {
+      resolved.set(destRel, { src: packagePath, priority });
     }
   }
-  let copied = 0;
-  for (const [key, destRel] of prodEntries) {
-    const src = path.join(ROOT, key);
-    if (!existsSync(src)) continue;
-    await copyTree(src, path.join(staging, destRel));
-    copied += 1;
+  for (const [destRel, entry] of resolved) {
+    await copyTree(entry.src, path.join(staging, destRel));
   }
-  log(`node_modules packages copied: ${copied}`);
+  log(`node_modules packages copied: ${resolved.size} (API-only closure)`);
 
-  // 4) runtime/node：便携 Node（npmmirror 镜像 + 官方 SHASUMS256 校验）
+  // 4) runtime/node：便携 Node（官方源或 VD_NODE_MIRROR + SHASUMS256 校验）
   const nodeZipName = `node-v${nodeVersion}-win-x64.zip`;
   const nodeZip = path.join(downloadsDir, nodeZipName);
   if (!existsSync(nodeZip)) {
-    log(`downloading ${nodeZipName} from npmmirror ...`);
+    log(`downloading ${nodeZipName} from node mirror ...`);
     await downloadTo(`${NODE_MIRROR}/v${nodeVersion}/${nodeZipName}`, nodeZip);
   }
   const shasums = await (await fetch(`${NODE_MIRROR}/v${nodeVersion}/SHASUMS256.txt`, { redirect: 'follow' })).text();
@@ -242,7 +281,7 @@ async function main() {
 
   // 7) tools/libreoffice：msiexec /a 免管理员解包
   if (skipLibreOffice) {
-    log('skipping libreoffice (--skip-libreoffice)');
+    log('skipping libreoffice (default; use --with-libreoffice for server-side high-fidelity preview)');
   } else {
     const loMsi = path.join(downloadsDir, 'LibreOffice_26.8.3_Win_x86-64.msi');
     if (!existsSync(loMsi)) throw new Error(`缺少 ${loMsi}`);
@@ -261,8 +300,8 @@ async function main() {
   await extractZip(path.join(downloadsDir, 'postgresql-16.16-windows-x64-binaries.zip'), pgTmp);
   const pgDir = await findDirWith(pgTmp, 'bin/postgres.exe');
   if (!pgDir) throw new Error('PostgreSQL 解包后找不到 bin/postgres.exe');
-  await copyTree(pgDir, path.join(staging, 'tools/postgresql'));
-  log('tools/postgresql ready');
+  const skippedPg = await copyPostgresRuntime(pgDir, path.join(staging, 'tools/postgresql'));
+  log(`tools/postgresql ready (runtime only; skipped: ${skippedPg.join(', ') || 'none'})`);
 
   const resticTmp = path.join(tmpRoot, 'restic');
   await extractZip(path.join(downloadsDir, 'restic_0.19.1_windows_amd64.zip'), resticTmp);
@@ -273,7 +312,13 @@ async function main() {
   await copyTree(resticExe, path.join(staging, 'tools/restic/restic.exe'));
   log('tools/restic ready');
 
-  // 9) 元数据与校验清单
+  // 9) 安装/升级/回滚脚本（README-INSTALL.txt 引用的入口）
+  for (const name of ['install.ps1', 'upgrade.ps1', 'rollback.ps1']) {
+    await copyTree(path.join(ROOT, 'deploy/windows', name), path.join(staging, name));
+  }
+  log('install scripts ready');
+
+  // 10) 元数据与校验清单
   await writeFile(
     path.join(staging, 'VERSION'),
     `${version}\nbuilt ${new Date().toISOString()}\nnode v${nodeVersion}\n`,

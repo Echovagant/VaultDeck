@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 
+import { testCredentials as creds } from '../lib/test-credentials.mjs';
+
 const BASE = 'http://127.0.0.1:3000/api/v1';
+const TEMP_PASSWORD = 'LeaderTemp12345';
 const PNG_1X1 =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
@@ -13,9 +16,8 @@ async function login(username, password) {
   return { status: response.status, body: await response.json() };
 }
 
-const seed = await login('leader', 'leader123');
-const currentPassword = seed.status === 200 ? 'leader123' : 'LeaderPass12345';
-const session = seed.status === 200 ? seed : await login('leader', currentPassword);
+const currentPassword = creds.leader;
+const session = await login('leader', currentPassword);
 assert.equal(session.status, 200, JSON.stringify(session.body));
 
 const auth = { authorization: `Bearer ${session.body.token}` };
@@ -59,14 +61,14 @@ assert.equal(avatarBytes.toString('base64'), avatarBuffer.toString('base64'));
 const badPassword = await fetch(`${BASE}/auth/password`, {
   method: 'PUT',
   headers: { ...auth, 'content-type': 'application/json' },
-  body: JSON.stringify({ currentPassword: 'wrong-password', newPassword: 'LeaderPass12345' }),
+  body: JSON.stringify({ currentPassword: 'wrong-password', newPassword: TEMP_PASSWORD }),
 });
 assert.equal(badPassword.status, 400);
 
 const changePassword = await fetch(`${BASE}/auth/password`, {
   method: 'PUT',
   headers: { ...auth, 'content-type': 'application/json' },
-  body: JSON.stringify({ currentPassword, newPassword: 'LeaderPass12345' }),
+  body: JSON.stringify({ currentPassword, newPassword: TEMP_PASSWORD }),
 });
 assert.equal(changePassword.status, 204);
 
@@ -75,14 +77,14 @@ assert.equal(revoked.status, 401, '改密后其他会话应失效');
 const kept = await fetch(`${BASE}/auth/me`, { headers: auth });
 assert.equal(kept.status, 200, '改密后当前会话应保留');
 
-const newLogin = await login('leader', 'LeaderPass12345');
+const newLogin = await login('leader', TEMP_PASSWORD);
 assert.equal(newLogin.status, 200, JSON.stringify(newLogin.body));
 const restoredAuth = { authorization: `Bearer ${newLogin.body.token}` };
 
 const restorePassword = await fetch(`${BASE}/auth/password`, {
   method: 'PUT',
   headers: { ...restoredAuth, 'content-type': 'application/json' },
-  body: JSON.stringify({ currentPassword: 'LeaderPass12345', newPassword: 'leader123' }),
+  body: JSON.stringify({ currentPassword: TEMP_PASSWORD, newPassword: creds.leader }),
 });
 assert.equal(restorePassword.status, 204);
 
@@ -93,7 +95,7 @@ const restoreName = await fetch(`${BASE}/auth/me`, {
 });
 assert.equal(restoreName.status, 200);
 
-const finalLogin = await login('leader', 'leader123');
+const finalLogin = await login('leader', creds.leader);
 assert.equal(finalLogin.status, 200, JSON.stringify(finalLogin.body));
 const finalProfile = await (
   await fetch(`${BASE}/auth/me`, {

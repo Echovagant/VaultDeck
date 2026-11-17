@@ -6,9 +6,13 @@ import type { FastifyInstance } from 'fastify';
 
 import { AppModule } from './app.module';
 import { configureComposition } from './composition/root';
+import { logger } from './infrastructure/logging/logger';
+import { reconcileUploadStaging } from './infrastructure/ops/startup-integrity';
 import { ProblemDetailsFilter } from './interfaces/http/errors/problem-details.filter';
 import { DomainError, toProblem } from './interfaces/http/errors/problem-details';
+import { installRateLimit } from './interfaces/http/rate-limit';
 import { ensureRequestId, type RequestWithId } from './interfaces/http/request-context';
+import { installSecurityHeaders } from './interfaces/http/security-headers';
 import { startMaintenanceScheduler } from './infrastructure/scheduler/maintenance';
 import { prepareStore, store, storeKind } from './infrastructure/store';
 
@@ -55,14 +59,29 @@ async function bootstrap(): Promise<void> {
   });
 
   configureComposition(app);
+  installRateLimit(fastify);
+  installSecurityHeaders(fastify);
+
+  fastify.addHook('onResponse', (request, reply, done) => {
+    logger.info('api.request', {
+      requestId: ensureRequestId(request as RequestWithId),
+      method: request.method,
+      path: request.url.split('?')[0],
+      status: reply.statusCode,
+      durationMs: Math.round(reply.elapsedTime),
+      ip: request.ip,
+    });
+    done();
+  });
 
   await prepareStore();
+  const stagingRemoved = await reconcileUploadStaging();
   startMaintenanceScheduler(store);
 
   const port = Number(process.env['PORT'] ?? 3000);
   const host = process.env['HOST'] ?? '127.0.0.1';
   await app.listen({ port, host });
-  process.stdout.write(`[vaultdeck] store=${storeKind} listening ${host}:${port}\n`);
+  logger.info('api.started', { store: storeKind, host, port, stagingRemoved });
 }
 
 void bootstrap();

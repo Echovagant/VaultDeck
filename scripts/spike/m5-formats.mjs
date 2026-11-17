@@ -5,6 +5,7 @@ import path from 'node:path';
 import { deflateSync } from 'node:zlib';
 import { buildZip } from './lib/zip.mjs';
 
+import { testCredentials as creds } from '../lib/test-credentials.mjs';
 const BASE = 'http://127.0.0.1:3000/api/v1';
 const TMP = path.resolve('_private/tmp');
 
@@ -132,7 +133,7 @@ async function upload(headers, input) {
   return { file, mode: 'new', sha256 };
 }
 
-const token = await login('leader', 'leader123');
+const token = await login('leader', creds.leader);
 const headers = { authorization: `Bearer ${token}` };
 
 const projects = await (await call('/projects', headers)).json();

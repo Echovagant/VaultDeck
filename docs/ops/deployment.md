@@ -8,10 +8,10 @@
       current.txt           指针文件，内容为当前版本目录名
       runtime\node\         内置 Node 运行时
       tools\nginx\          Nginx for Windows
-      tools\libreoffice\    LibreOffice（Office 预览）
+      tools\libreoffice\    LibreOffice（可选；仅 pptx/老式 Office 高保真预览需要）
       tools\winsw\          WinSW 可执行文件
       data\storage\         文件分片与对象
-      data\previews\        Office 转 PDF 缓存
+      data\previews\        LibreOffice 转 PDF 缓存（未启用时为空）
       certs\                服务器证书与 CA
       logs\                 服务日志
       secrets\              数据库连接串（不提交、不共享）
@@ -25,7 +25,7 @@
 | Node.js 24       | 运行后端            | 随发布包内置，不依赖系统安装            |
 | PostgreSQL 16    | 数据存储            | 程序与数据均在非系统盘，`initdb` 初始化 |
 | Nginx 1.30.x     | TLS、静态资源、反代 | Windows 构建为单 worker                 |
-| LibreOffice 26.x | Office 转 PDF       | 用 `msiexec /a` 解包，无需管理员        |
+| LibreOffice 26.x | 可选：pptx/老式 Office 高保真预览 | 默认包不包含；需要时用 `msiexec /a` 解包并配置 `VD_SOFFICE_PATH` |
 | WinSW 2.x        | 服务守护            | 从 NuGet 获取，需 .NET Framework 4.8    |
 | restic           | 备份                | 与 pg_dump 配合，见备份章节             |
 
@@ -99,16 +99,17 @@ New-NetFirewallRule -DisplayName "VaultDeck HTTPS" -Direction Inbound -Protocol 
 3. 用三个角色分别登录，项目与文件可见性符合权限矩阵。
 4. 上传 10 MB 以上文件，断网 30 秒后续传成功。
 5. 下载同一文件，`Range` 请求返回 206。
-6. 上传 docx，等待后台预转换后预览应接近秒开。
-7. 删除文件进回收站，恢复后回到原文件夹。
-8. 重启两个服务，数据仍在（文件数、账号数、审计条数）。
+6. 上传 docx/xlsx，预览应在浏览器内直接渲染（不依赖服务端 LibreOffice）；PDF 用浏览器查看器打开。
+7. 若安装了可选 LibreOffice，再验证 pptx 的服务端预览。
+8. 删除文件进回收站，恢复后回到原文件夹。
+9. 重启两个服务，数据仍在（文件数、账号数、审计条数）。
 
 ## 9 已知限制
 
 | 限制                                 | 影响               | 缓解                                     |
 | ------------------------------------ | ------------------ | ---------------------------------------- |
 | Nginx Windows 单 worker、无 sendfile | 高并发下延迟上升   | 文件正文由 Node 流式下发，Nginx 只做反代 |
-| Office 首次转换约 17–22 秒           | 首次预览等待       | 上传后自动后台预转换，命中缓存约 100 ms  |
+| pptx/老式 Office 需可选 LibreOffice | 未启用时只能下载 | 默认 docx/xlsx/pdf 已可浏览器预览；需要高保真时再安装并配置 `VD_SOFFICE_PATH` |
 | 无 RAID（单机单盘）                  | 磁盘故障即数据丢失 | 每日增量 + 每周全量备份到外置介质        |
 | 无 UPS                               | 断电可能损坏阵列   | 停机前正常关服务；避免写入高峰断电       |
 | 主机同时承担开发与服务               | 编译会打断访问     | 开发实例与演示实例使用不同端口与数据目录 |

@@ -17,6 +17,10 @@ function Copy-Into($src, $dst) {
 
 Write-Output "rollback to version $Version"
 Copy-Into $releaseCurrent (Join-Path $TargetHome 'current')
+# refresh WinSW per-service configs (executables stay in tools\winsw)
+foreach ($svc in @('vaultdeck-api', 'vaultdeck-web')) {
+  Copy-Item (Join-Path $TargetHome ("current\" + $svc + '.xml')) (Join-Path $TargetHome ("tools\winsw\" + $svc + '.xml')) -Force
+}
 Set-Content -Path (Join-Path $TargetHome 'current.txt') -Value $Version
 
 Write-Output 'restarting services...'
