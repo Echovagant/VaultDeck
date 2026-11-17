@@ -11,6 +11,7 @@ import { reconcileUploadStaging } from './infrastructure/ops/startup-integrity';
 import { ProblemDetailsFilter } from './interfaces/http/errors/problem-details.filter';
 import { DomainError, toProblem } from './interfaces/http/errors/problem-details';
 import { installRateLimit } from './interfaces/http/rate-limit';
+import { installClientCertGate } from './interfaces/http/client-cert';
 import { ensureRequestId, type RequestWithId } from './interfaces/http/request-context';
 import { installSecurityHeaders } from './interfaces/http/security-headers';
 import { startMaintenanceScheduler } from './infrastructure/scheduler/maintenance';
@@ -70,6 +71,7 @@ async function bootstrap(): Promise<void> {
   configureComposition(app);
   installRateLimit(fastify);
   installSecurityHeaders(fastify);
+  installClientCertGate(fastify);
 
   fastify.addHook('onResponse', (request, reply, done) => {
     logger.info('api.request', {

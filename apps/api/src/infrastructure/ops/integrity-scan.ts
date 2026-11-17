@@ -1,5 +1,3 @@
-import { createHash } from 'node:crypto';
-import { createReadStream } from 'node:fs';
 import { readdir, stat } from 'node:fs/promises';
 
 import path from 'node:path';
@@ -41,16 +39,6 @@ export function getLastIntegrityReport(): IntegrityReport | null {
   return lastReport;
 }
 
-async function sha256File(filePath: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const hash = createHash('sha256');
-    const stream = createReadStream(filePath);
-    stream.on('data', (chunk) => hash.update(chunk));
-    stream.on('end', () => resolve(hash.digest('hex')));
-    stream.on('error', reject);
-  });
-}
-
 async function walkFiles(dir: string): Promise<string[]> {
   const files: string[] = [];
   const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
@@ -79,8 +67,8 @@ export async function runIntegrityScan(store: StorePort): Promise<IntegrityRepor
       const relative = path.relative(dataRoot, absolute).replaceAll('\\', '/');
       knownPaths.add(path.resolve(absolute));
       try {
-        const info = await stat(absolute);
-        if (info.size !== object.sizeBytes) {
+        const plainSize = await objectStorage.plaintextSize(object.relPath);
+        if (plainSize !== object.sizeBytes) {
           issues.push({
             objectId: object.objectId,
             sha256: object.sha256,
@@ -89,7 +77,7 @@ export async function runIntegrityScan(store: StorePort): Promise<IntegrityRepor
           });
           continue;
         }
-        const actual = await sha256File(absolute);
+        const actual = await objectStorage.hashPlaintext(object.relPath);
         if (actual !== object.sha256) {
           issues.push({
             objectId: object.objectId,

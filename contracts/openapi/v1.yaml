@@ -50,7 +50,10 @@ paths:
               description: HttpOnly + SameSite=Strict 的 vd_session Cookie
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/LoginResult' }
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/LoginResult'
+                  - $ref: '#/components/schemas/MfaChallenge'
         '401': { $ref: '#/components/responses/Unauthorized' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
   /auth/logout:
@@ -72,6 +75,91 @@ paths:
       responses:
         '204': { description: 已修改，其他会话失效 }
         '400': { $ref: '#/components/responses/BadRequest' }
+  /auth/mfa:
+    get:
+      tags: [auth]
+      operationId: getMfaStatus
+      responses:
+        '200':
+          description: 当前账号的 MFA 状态
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MfaStatus' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /auth/mfa/verify:
+    post:
+      tags: [auth]
+      operationId: verifyMfa
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MfaVerifyRequest' }
+      responses:
+        '200':
+          description: MFA 验证通过并建立会话
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+              description: HttpOnly + SameSite=Strict 的 vd_session Cookie
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginResult' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /auth/mfa/setup:
+    post:
+      tags: [auth]
+      operationId: setupMfa
+      responses:
+        '200':
+          description: 生成待确认的 TOTP 密钥
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MfaSetup' }
+        '409':
+          description: MFA 已启用
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+  /auth/mfa/enable:
+    post:
+      tags: [auth]
+      operationId: enableMfa
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MfaCodeRequest' }
+      responses:
+        '200':
+          description: 已启用
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MfaStatus' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409':
+          description: MFA 已启用
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+  /auth/mfa/disable:
+    post:
+      tags: [auth]
+      operationId: disableMfa
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MfaDisableRequest' }
+      responses:
+        '200':
+          description: 已停用
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MfaStatus' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
   /auth/me:
     get:
       tags: [auth]
@@ -978,6 +1066,44 @@ components:
             token:
               type: string
               description: API 客户端使用的 Bearer token；x-auth-mode=cookie 时不返回
+    MfaChallenge:
+      type: object
+      required: [mfaRequired, challengeToken, expiresInSeconds]
+      properties:
+        mfaRequired: { type: boolean, enum: [true] }
+        challengeToken: { type: string }
+        expiresInSeconds: { type: integer, minimum: 1 }
+    MfaStatus:
+      type: object
+      required: [enabled]
+      properties:
+        enabled: { type: boolean }
+    MfaSetup:
+      type: object
+      required: [secret, otpauthUrl]
+      properties:
+        secret: { type: string }
+        otpauthUrl: { type: string }
+    MfaVerifyRequest:
+      type: object
+      required: [challengeToken, code]
+      additionalProperties: false
+      properties:
+        challengeToken: { type: string, maxLength: 4096 }
+        code: { type: string, pattern: '^\\d{6}$' }
+    MfaCodeRequest:
+      type: object
+      required: [code]
+      additionalProperties: false
+      properties:
+        code: { type: string, pattern: '^\\d{6}$' }
+    MfaDisableRequest:
+      type: object
+      required: [password, code]
+      additionalProperties: false
+      properties:
+        password: { type: string, maxLength: 256 }
+        code: { type: string, pattern: '^\\d{6}$' }
     User:
       type: object
       required: [userId, username, displayName, role, status]

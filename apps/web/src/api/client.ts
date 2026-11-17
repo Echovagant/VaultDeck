@@ -51,6 +51,21 @@ export interface LoginResponse {
   avatarUrl?: string;
 }
 
+export interface MfaChallengeResponse {
+  mfaRequired: true;
+  challengeToken: string;
+  expiresInSeconds: number;
+}
+
+export interface MfaStatus {
+  enabled: boolean;
+}
+
+export interface MfaSetup {
+  secret: string;
+  otpauthUrl: string;
+}
+
 export interface SessionUser {
   userId: string;
   username: string;

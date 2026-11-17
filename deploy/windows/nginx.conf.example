@@ -36,6 +36,11 @@ http {
     ssl_certificate_key ../certs/server.key;
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_session_cache shared:SSL:10m;
+    # 双向 TLS（可选）：由 deploy/windows/gen-certs.ps1 -ClientName <name> 生成
+    # certs/client-ca.crt 后取消下面三行注释，并设置机器环境变量 VD_REQUIRE_CLIENT_CERT=true
+    # ssl_client_certificate ../certs/client-ca.crt;
+    # ssl_verify_client optional;
+    # ssl_verify_depth 2;
 
     add_header X-Content-Type-Options "nosniff" always;
     add_header X-Frame-Options "DENY" always;
@@ -59,6 +64,10 @@ http {
       proxy_set_header X-Real-IP $remote_addr;
       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
       proxy_set_header X-Forwarded-Proto $scheme;
+      # 双向 TLS（可选）：与 server 段的 ssl_client_certificate 一起启用
+      # proxy_set_header X-Client-Verify $ssl_client_verify;
+      # proxy_set_header X-Client-DN $ssl_client_s_dn;
+      # proxy_set_header X-Client-Fingerprint $ssl_client_fingerprint;
       proxy_request_buffering off;
       proxy_buffering off;
       proxy_read_timeout 300s;

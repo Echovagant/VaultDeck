@@ -5,6 +5,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 
 import { PreviewUnavailable } from '../../domain/errors';
+import { encryptFileInPlace } from '../crypto/at-rest';
 
 const execFileAsync = promisify(execFile);
 
@@ -90,6 +91,8 @@ export class LibreOfficePreview {
     }
 
     await rename(produced, cachePath);
+    // 预览缓存与源文件同样按应用层加密落盘；未配置密钥时保持明文
+    await encryptFileInPlace(cachePath).catch(() => undefined);
     return cachePath;
   }
 }

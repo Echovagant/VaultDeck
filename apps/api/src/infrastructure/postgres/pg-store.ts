@@ -17,6 +17,7 @@ import type {
   StoreFolder,
   StoreLoginResult,
   StoreMember,
+  StoreMfaState,
   StorePort,
   StoreProject,
   StoreSettings,
@@ -153,19 +154,51 @@ export class PgStore implements StorePort {
   constructor(private readonly pool: Pool) {}
 
   async login(username: string, password: string): Promise<StoreLoginResult | null> {
+    const user = await this.verifyCredentials(username, password);
+    if (!user) return null;
+    const token = await this.createSession(user.userId);
+    return { token, user };
+  }
+
+  async verifyCredentials(username: string, password: string): Promise<StoreUser | null> {
     const result = await this.pool.query<UserRow>(
       'SELECT * FROM app_user WHERE lower(username) = lower($1) AND status = $2',
       [username, 'active'],
     );
     const row = result.rows[0];
     if (!row || !verifyPassword(password, row.password_hash)) return null;
+    return mapUser(row);
+  }
 
+  async createSession(userId: string): Promise<string> {
     const token = randomBytes(32).toString('base64url');
     await this.pool.query(
       'INSERT INTO user_session (token_hash, user_id, expires_at) VALUES ($1, $2, $3)',
-      [sha256Hex(token), row.user_id, new Date(Date.now() + SESSION_TTL_MS)],
+      [sha256Hex(token), userId, new Date(Date.now() + SESSION_TTL_MS)],
     );
-    return { token, user: mapUser(row) };
+    return token;
+  }
+
+  async mfaState(userId: string): Promise<StoreMfaState> {
+    const result = await this.pool.query<{
+      mfa_secret: string | null;
+      mfa_enabled_at: Date | null;
+    }>('SELECT mfa_secret, mfa_enabled_at FROM app_user WHERE user_id = $1', [userId]);
+    const row = result.rows[0];
+    return {
+      enabled: Boolean(row?.mfa_enabled_at),
+      secret: row?.mfa_secret ?? null,
+    };
+  }
+
+  async setMfaSecret(userId: string, secret: string | null, enabled: boolean): Promise<void> {
+    await this.pool.query(
+      `UPDATE app_user
+       SET mfa_secret = $2,
+           mfa_enabled_at = CASE WHEN $3 THEN now() ELSE NULL END
+       WHERE user_id = $1`,
+      [userId, secret, enabled],
+    );
   }
 
   async logout(token: string): Promise<void> {

@@ -276,6 +276,7 @@ export class UploadController {
         session.sessionId,
         session.chunkCount,
         sha256,
+        session.sizeBytes,
       );
       const file = await store.addFile({
         projectId: session.projectId,
@@ -298,14 +299,22 @@ export class UploadController {
       });
 
       if (previewAdapter.supports(file.fileName) && file.objectPath) {
-        void previewAdapter
-          .convertToPdf({
-            fileId: file.fileId,
-            objectPath: objectStorage.resolve(file.objectPath),
-          })
-          .catch(() => {
-            // 预转换失败不影响上传结果，预览时会再次尝试
-          });
+        void (async () => {
+          const materialized = await objectStorage.materializePlaintext(
+            file.objectPath,
+            file.fileName,
+          );
+          try {
+            await previewAdapter.convertToPdf({
+              fileId: file.fileId,
+              objectPath: materialized.path,
+            });
+          } finally {
+            await objectStorage.cleanupMaterialized(materialized);
+          }
+        })().catch(() => {
+          // 预转换失败不影响上传结果，预览时会再次尝试
+        });
       }
 
       await objectStorage.cleanupSession(session.sessionId);

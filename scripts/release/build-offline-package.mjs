@@ -148,7 +148,8 @@ async function main() {
     return index >= 0 ? args[index + 1] : undefined;
   };
 
-  const version = valueOf('--version') ?? `v${new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '')}`;
+  const version =
+    valueOf('--version') ?? `v${new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '')}`;
   const outRoot = path.resolve(ROOT, valueOf('--out') ?? 'releases');
   const downloadsDir = path.resolve(ROOT, valueOf('--downloads') ?? '_private/downloads');
   const nodeVersion = valueOf('--node-version') ?? '24.16.0';
@@ -181,8 +182,10 @@ async function main() {
     log('building @vaultdeck/web ...');
     await run('npm run build --workspace @vaultdeck/web');
   }
-  if (!existsSync(path.join(ROOT, 'apps/api/dist/main.js'))) throw new Error('apps/api/dist/main.js 不存在');
-  if (!existsSync(path.join(ROOT, 'apps/web/dist/index.html'))) throw new Error('apps/web/dist/index.html 不存在');
+  if (!existsSync(path.join(ROOT, 'apps/api/dist/main.js')))
+    throw new Error('apps/api/dist/main.js 不存在');
+  if (!existsSync(path.join(ROOT, 'apps/web/dist/index.html')))
+    throw new Error('apps/web/dist/index.html 不存在');
 
   await mkdir(staging, { recursive: true });
   await mkdir(tmpRoot, { recursive: true });
@@ -190,11 +193,17 @@ async function main() {
 
   // 3) current：api 产物 + 生产依赖闭包 + 迁移 + WinSW 服务定义
   await copyTree(path.join(ROOT, 'apps/api/dist'), path.join(current, 'api'));
-  await copyTree(path.join(ROOT, 'apps/api/src/infrastructure/db/migrations'), path.join(current, 'migrations'));
+  await copyTree(
+    path.join(ROOT, 'apps/api/src/infrastructure/db/migrations'),
+    path.join(current, 'migrations'),
+  );
   for (const xml of ['vaultdeck-api.xml', 'vaultdeck-web.xml']) {
     await copyTree(path.join(ROOT, 'deploy/windows', xml), path.join(current, xml));
   }
-  await copyTree(path.join(ROOT, 'apps/api/package.json'), path.join(current, 'api', 'package.json'));
+  await copyTree(
+    path.join(ROOT, 'apps/api/package.json'),
+    path.join(current, 'api', 'package.json'),
+  );
 
   log('resolving production node_modules closure for @vaultdeck/api ...');
   // 只收 @vaultdeck/api 的运行时闭包：旧实现按 package-lock 全量 prod 条目复制，会把 web
@@ -218,7 +227,10 @@ async function main() {
     } else {
       continue; // 仓库根、其他 workspace、源码目录
     }
-    if (destRel.includes(`${path.sep}@vaultdeck${path.sep}`) || destRel.endsWith(`${path.sep}.bin`)) {
+    if (
+      destRel.includes(`${path.sep}@vaultdeck${path.sep}`) ||
+      destRel.endsWith(`${path.sep}.bin`)
+    ) {
       continue;
     }
     const priority = rel.startsWith(apiNodeModules) ? 1 : 0;
@@ -239,7 +251,9 @@ async function main() {
     log(`downloading ${nodeZipName} from node mirror ...`);
     await downloadTo(`${NODE_MIRROR}/v${nodeVersion}/${nodeZipName}`, nodeZip);
   }
-  const shasums = await (await fetch(`${NODE_MIRROR}/v${nodeVersion}/SHASUMS256.txt`, { redirect: 'follow' })).text();
+  const shasums = await (
+    await fetch(`${NODE_MIRROR}/v${nodeVersion}/SHASUMS256.txt`, { redirect: 'follow' })
+  ).text();
   const expectedNode = new RegExp(`^([a-f0-9]{64})\\s+${nodeZipName}$`, 'm').exec(shasums)?.[1];
   if (!expectedNode) throw new Error(`SHASUMS256.txt 中找不到 ${nodeZipName}`);
   const actualNode = await sha256File(nodeZip);
@@ -261,27 +275,30 @@ async function main() {
   if (!nginxDir) throw new Error('Nginx 解包后找不到 conf/nginx.conf');
   const nginxHome = path.join(staging, 'tools/nginx');
   await copyTree(nginxDir, nginxHome);
-  await copyTree(path.join(ROOT, 'deploy/windows/nginx.conf.example'), path.join(nginxHome, 'conf', 'nginx.conf'));
+  await copyTree(
+    path.join(ROOT, 'deploy/windows/nginx.conf.example'),
+    path.join(nginxHome, 'conf', 'nginx.conf'),
+  );
   await copyTree(path.join(ROOT, 'apps/web/dist'), path.join(nginxHome, 'app'));
-  const certsDir = path.join(ROOT, '_private/certs');
-  if (existsSync(certsDir)) {
-    await copyTree(certsDir, path.join(nginxHome, 'certs'));
-    await copyTree(certsDir, path.join(staging, 'certs'));
-  }
-  log('tools/nginx ready (app + certs included)');
+  // 证书与私钥一律由安装端 setup.ps1 / gen-certs.mjs 在本机生成，
+  // 发布包不携带任何 CA、服务端证书或私钥，避免把本机信任链带出去。
+  log('tools/nginx ready (app included; certificates generated at install time)');
 
   // 6) tools/winsw
   const winswTmp = path.join(tmpRoot, 'winsw');
   await extractZip(path.join(downloadsDir, 'winsw-2.11.0.nupkg'), winswTmp);
   const winswExe = path.join(winswTmp, 'lib', 'net461-full', 'WinSW.NET461.exe');
-  if (!existsSync(winswExe)) throw new Error('WinSW nupkg 中找不到 lib/net461-full/WinSW.NET461.exe');
+  if (!existsSync(winswExe))
+    throw new Error('WinSW nupkg 中找不到 lib/net461-full/WinSW.NET461.exe');
   await mkdir(path.join(staging, 'tools/winsw'), { recursive: true });
   await copyTree(winswExe, path.join(staging, 'tools/winsw/WinSW.NET461.exe'));
   log('tools/winsw ready');
 
   // 7) tools/libreoffice：msiexec /a 免管理员解包
   if (skipLibreOffice) {
-    log('skipping libreoffice (default; use --with-libreoffice for server-side high-fidelity preview)');
+    log(
+      'skipping libreoffice (default; use --with-libreoffice for server-side high-fidelity preview)',
+    );
   } else {
     const loMsi = path.join(downloadsDir, 'LibreOffice_26.8.3_Win_x86-64.msi');
     if (!existsSync(loMsi)) throw new Error(`缺少 ${loMsi}`);
@@ -313,10 +330,19 @@ async function main() {
   log('tools/restic ready');
 
   // 9) 安装/升级/回滚脚本（README-INSTALL.txt 引用的入口）
-  for (const name of ['install.ps1', 'upgrade.ps1', 'rollback.ps1']) {
+  for (const name of ['install.ps1', 'upgrade.ps1', 'rollback.ps1', 'setup.ps1']) {
     await copyTree(path.join(ROOT, 'deploy/windows', name), path.join(staging, name));
   }
-  log('install scripts ready');
+  await mkdir(path.join(staging, 'tools/setup/node_modules'), { recursive: true });
+  await copyTree(
+    path.join(ROOT, 'deploy/windows/gen-certs.mjs'),
+    path.join(staging, 'tools/setup/gen-certs.mjs'),
+  );
+  // 证书生成脚本依赖 node-forge；它不属于 API 运行时闭包，单独放进 tools/setup。
+  const forgeSource = path.join(ROOT, 'node_modules/node-forge');
+  if (!existsSync(forgeSource)) throw new Error('缺少 node-forge：先执行 npm install');
+  await copyTree(forgeSource, path.join(staging, 'tools/setup/node_modules/node-forge'));
+  log('install scripts ready (setup + certificate generator)');
 
   // 10) 元数据与校验清单
   await writeFile(
@@ -328,23 +354,25 @@ async function main() {
     [
       'VaultDeck offline package',
       '',
-      'Install (non-admin part):',
-      '  powershell -ExecutionPolicy Bypass -File install.ps1 -TargetHome <VAULTDECK_HOME>',
+      'Fresh install (run an elevated PowerShell from this directory):',
+      '  powershell -ExecutionPolicy Bypass -File setup.ps1 -PackageDir . -TargetHome <VAULTDECK_HOME>',
       '',
-      'Admin steps afterwards (see docs/ops/deployment.md sections 5 and 7):',
-      '  1. setx /M VAULTDECK_HOME <VAULTDECK_HOME>',
-      '  2. setx /M VAULTDECK_DB_URL <connection string>',
-      '  3. migrations:  set VD_MIGRATIONS_DIR=%VAULTDECK_HOME%\\current\\migrations &&',
-      '     "%VAULTDECK_HOME%\\runtime\\node\\node.exe" "%VAULTDECK_HOME%\\current\\api\\infrastructure\\db\\migrate-cli.js"',
-      '     (VD_DATABASE_URL must be set in the same shell)',
-      '  4. WinSW install for vaultdeck-api.xml / vaultdeck-web.xml (in %VAULTDECK_HOME%\\current)',
-      '  5. firewall rule for 8443/TCP',
-      '  6. import CA cert (machine store, optional)',
+      'setup.ps1 performs: copy files, init a local PostgreSQL cluster, generate',
+      'database passwords + encryption key + TLS certificates, run migrations,',
+      'register WinSW services, open firewall ports and smoke test.',
+      '',
+      'Options:',
+      '  -PgPort 55432 -HttpsPort 8443 -HttpPort 80',
+      '  -RequireClientCert -ClientName <name>   enable mutual TLS (generates client CA)',
+      '  -ServerDns <name> -ServerIp <ip>        add SAN entries for LAN access',
+      '  -SkipFirewall -SkipServices',
       '',
       'Upgrade:  upgrade.ps1 -PackageDir <new package dir>',
       'Rollback: rollback.ps1 -Version <version in releases>',
       '',
       'Smoke check: https://<host>:8443/  and  /api/v1/system/health',
+      '',
+      'Certificates and keys are generated on this machine and never shipped in the package.',
       '',
     ].join('\n'),
   );
@@ -369,6 +397,8 @@ async function main() {
 }
 
 main().catch((error) => {
-  process.stderr.write(`[pack] FAILED: ${error instanceof Error ? error.message : String(error)}\n`);
+  process.stderr.write(
+    `[pack] FAILED: ${error instanceof Error ? error.message : String(error)}\n`,
+  );
   process.exitCode = 1;
 });

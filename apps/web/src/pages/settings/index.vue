@@ -36,7 +36,10 @@
             <a-switch v-model:checked="form.instantUploadEnabled" />
             <p class="settings-hint">
               仅对系统中已存在的相同文件生效（校验同哈希后不再传输内容）；单文件上限
-              {{ form.maxUploadGb }} GB。命中前仍需在浏览器计算文件指纹，大文件需要数十秒；首次上传按实际大小传输，速率以进度旁实测为准。
+              {{
+                form.maxUploadGb
+              }}
+              GB。命中前仍需在浏览器计算文件指纹，大文件需要数十秒；首次上传按实际大小传输，速率以进度旁实测为准。
             </p>
           </a-form-item>
         </a-form>
@@ -84,12 +87,98 @@
         </div>
         <p class="settings-hint">状态为只读，刷新页面重新采集；会话数包含所有已登录设备。</p>
       </div>
+
+      <div class="settings-panel">
+        <h2 class="settings-title">账号安全</h2>
+        <div class="status-grid">
+          <div class="status-item">
+            <span class="status-label">双重验证</span>
+            <span class="status-value">{{ mfaEnabled ? '已启用' : '未启用' }}</span>
+          </div>
+          <div class="status-item">
+            <span class="status-label">验证方式</span>
+            <span class="status-value">TOTP 动态码</span>
+          </div>
+        </div>
+        <p class="settings-hint">
+          启用后，登录时除口令外还需输入身份验证器中的 6 位动态码。密钥仅以加密形式保存在服务端。
+        </p>
+        <a-button v-if="!mfaEnabled" class="mfa-action" @click="openMfaSetup">
+          启用双重验证
+        </a-button>
+        <a-button v-else danger class="mfa-action" @click="openMfaDisable"> 停用双重验证 </a-button>
+      </div>
     </div>
 
     <div class="settings-actions">
       <a-button type="primary" :loading="saving" @click="save">保存设置</a-button>
       <a-button :loading="loading" @click="load">放弃修改</a-button>
     </div>
+
+    <a-modal
+      v-model:open="mfaSetupOpen"
+      title="启用双重验证"
+      :footer="null"
+      :destroy-on-close="true"
+      @cancel="closeMfaSetup"
+    >
+      <div v-if="mfaSetup" class="mfa-setup">
+        <p class="mfa-setup-copy">
+          用身份验证器（如 Microsoft Authenticator、Google
+          Authenticator）扫描二维码；无法扫描时手动输入下方密钥。
+        </p>
+        <div class="mfa-qr">
+          <a-qrcode :value="mfaSetup.otpauthUrl" :size="176" />
+        </div>
+        <a-input :value="mfaSetup.secret" readonly class="mfa-secret" />
+        <a-form layout="vertical" :model="mfaForm" @finish="confirmMfaSetup">
+          <a-form-item
+            label="输入当前动态码"
+            name="code"
+            :rules="[
+              { required: true, message: '请输入动态验证码' },
+              { pattern: /^\d{6}$/, message: '动态验证码为 6 位数字' },
+            ]"
+          >
+            <a-input
+              v-model:value="mfaForm.code"
+              size="large"
+              inputmode="numeric"
+              autocomplete="one-time-code"
+              maxlength="6"
+              placeholder="000000"
+            />
+          </a-form-item>
+          <a-button type="primary" html-type="submit" block :loading="mfaSaving">
+            确认启用
+          </a-button>
+        </a-form>
+      </div>
+    </a-modal>
+
+    <a-modal
+      v-model:open="mfaDisableOpen"
+      title="停用双重验证"
+      :confirm-loading="mfaSaving"
+      ok-text="确认停用"
+      cancel-text="取消"
+      @ok="confirmMfaDisable"
+    >
+      <a-form layout="vertical" :model="mfaForm">
+        <a-form-item label="当前口令">
+          <a-input-password v-model:value="mfaForm.password" autocomplete="current-password" />
+        </a-form-item>
+        <a-form-item label="当前动态码">
+          <a-input
+            v-model:value="mfaForm.code"
+            inputmode="numeric"
+            autocomplete="one-time-code"
+            maxlength="6"
+            placeholder="000000"
+          />
+        </a-form-item>
+      </a-form>
+    </a-modal>
   </section>
 </template>
 
@@ -97,7 +186,7 @@
 import { message } from 'ant-design-vue';
 import { computed, onMounted, reactive, ref } from 'vue';
 
-import { ApiError, api, formatBytes } from '@/api/client';
+import { ApiError, api, formatBytes, type MfaSetup } from '@/api/client';
 
 interface SettingsResponse {
   maxUploadBytes: number;
@@ -119,6 +208,12 @@ const MB = 1024 * 1024;
 const loading = ref(false);
 const saving = ref(false);
 const health = ref<HealthResponse | null>(null);
+const mfaEnabled = ref(false);
+const mfaSetupOpen = ref(false);
+const mfaDisableOpen = ref(false);
+const mfaSetup = ref<MfaSetup | null>(null);
+const mfaSaving = ref(false);
+const mfaForm = reactive({ code: '', password: '' });
 const form = reactive({
   maxUploadGb: 20,
   chunkSizeMb: 8,
@@ -146,15 +241,17 @@ function formatDuration(seconds: number): string {
 async function load(): Promise<void> {
   loading.value = true;
   try {
-    const [settings, status] = await Promise.all([
+    const [settings, status, mfa] = await Promise.all([
       api<SettingsResponse>('/system/settings'),
       api<HealthResponse>('/system/health'),
+      api<{ enabled: boolean }>('/auth/mfa'),
     ]);
     form.maxUploadGb = Number((settings.maxUploadBytes / GB).toFixed(1));
     form.chunkSizeMb = Math.round(settings.chunkSizeBytes / MB);
     form.trashRetentionDays = settings.trashRetentionDays;
     form.instantUploadEnabled = settings.instantUploadEnabled;
     health.value = status;
+    mfaEnabled.value = mfa.enabled;
   } catch (error) {
     message.error(error instanceof ApiError ? error.message : '加载设置失败');
   } finally {
@@ -180,6 +277,71 @@ async function save(): Promise<void> {
     message.error(error instanceof ApiError ? error.message : '保存失败');
   } finally {
     saving.value = false;
+  }
+}
+
+async function openMfaSetup(): Promise<void> {
+  mfaSaving.value = false;
+  mfaForm.code = '';
+  mfaForm.password = '';
+  try {
+    mfaSetup.value = await api<MfaSetup>('/auth/mfa/setup', { method: 'POST' });
+    mfaSetupOpen.value = true;
+  } catch (error) {
+    message.error(error instanceof ApiError ? error.message : '无法初始化双重验证');
+  }
+}
+
+function closeMfaSetup(): void {
+  mfaSetupOpen.value = false;
+  mfaSetup.value = null;
+  mfaForm.code = '';
+}
+
+async function confirmMfaSetup(): Promise<void> {
+  const code = mfaForm.code.trim();
+  if (!/^\d{6}$/.test(code)) {
+    message.error('请输入 6 位动态验证码');
+    return;
+  }
+  mfaSaving.value = true;
+  try {
+    await api('/auth/mfa/enable', { method: 'POST', body: JSON.stringify({ code }) });
+    mfaEnabled.value = true;
+    closeMfaSetup();
+    message.success('双重验证已启用');
+  } catch (error) {
+    message.error(error instanceof ApiError ? error.message : '启用失败');
+  } finally {
+    mfaSaving.value = false;
+  }
+}
+
+function openMfaDisable(): void {
+  mfaForm.code = '';
+  mfaForm.password = '';
+  mfaDisableOpen.value = true;
+}
+
+async function confirmMfaDisable(): Promise<void> {
+  const code = mfaForm.code.trim();
+  if (!mfaForm.password || !/^\d{6}$/.test(code)) {
+    message.error('请输入当前口令与 6 位动态验证码');
+    return;
+  }
+  mfaSaving.value = true;
+  try {
+    await api('/auth/mfa/disable', {
+      method: 'POST',
+      body: JSON.stringify({ password: mfaForm.password, code }),
+    });
+    mfaEnabled.value = false;
+    mfaDisableOpen.value = false;
+    message.success('双重验证已停用');
+  } catch (error) {
+    message.error(error instanceof ApiError ? error.message : '停用失败');
+  } finally {
+    mfaSaving.value = false;
   }
 }
 
@@ -258,6 +420,29 @@ onMounted(load);
   display: flex;
   gap: 10px;
   margin-top: 16px;
+}
+
+.mfa-action {
+  margin-top: 12px;
+}
+
+.mfa-setup-copy {
+  margin: 0 0 8px;
+  color: var(--vd-text-secondary);
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+.mfa-qr {
+  display: flex;
+  justify-content: center;
+  margin: 16px 0;
+}
+
+.mfa-secret {
+  margin-bottom: 18px;
+  font-family: var(--vd-font-mono);
+  font-size: 12px;
 }
 
 @media (max-width: 760px) {

@@ -5,8 +5,17 @@ import {
   ApiError,
   api,
   type LoginResponse,
+  type MfaChallengeResponse,
+  type MfaSetup,
+  type MfaStatus,
   type SessionUser,
 } from '@/api/client';
+
+function isMfaChallenge(
+  result: LoginResponse | MfaChallengeResponse,
+): result is MfaChallengeResponse {
+  return 'challengeToken' in result;
+}
 
 export const useSessionStore = defineStore('session', () => {
   const user = ref<SessionUser | null>(null);
@@ -34,11 +43,30 @@ export const useSessionStore = defineStore('session', () => {
     await loadAvatar(next);
   }
 
-  async function login(username: string, password: string): Promise<void> {
-    const result = await api<LoginResponse>('/auth/login', {
+  async function login(username: string, password: string): Promise<MfaChallengeResponse | null> {
+    const result = await api<LoginResponse | MfaChallengeResponse>('/auth/login', {
       method: 'POST',
       headers: { 'x-auth-mode': 'cookie' },
       body: JSON.stringify({ username, password }),
+    });
+    if (isMfaChallenge(result)) {
+      return result;
+    }
+    await applyUser({
+      userId: result.userId,
+      username: result.username,
+      displayName: result.displayName,
+      role: result.role,
+      avatarUrl: result.avatarUrl,
+    });
+    return null;
+  }
+
+  async function verifyMfa(challengeToken: string, code: string): Promise<void> {
+    const result = await api<LoginResponse>('/auth/mfa/verify', {
+      method: 'POST',
+      headers: { 'x-auth-mode': 'cookie' },
+      body: JSON.stringify({ challengeToken, code }),
     });
     await applyUser({
       userId: result.userId,
@@ -46,6 +74,25 @@ export const useSessionStore = defineStore('session', () => {
       displayName: result.displayName,
       role: result.role,
       avatarUrl: result.avatarUrl,
+    });
+  }
+
+  async function mfaStatus(): Promise<MfaStatus> {
+    return api<MfaStatus>('/auth/mfa');
+  }
+
+  async function setupMfa(): Promise<MfaSetup> {
+    return api<MfaSetup>('/auth/mfa/setup', { method: 'POST' });
+  }
+
+  async function enableMfa(code: string): Promise<void> {
+    await api('/auth/mfa/enable', { method: 'POST', body: JSON.stringify({ code }) });
+  }
+
+  async function disableMfa(password: string, code: string): Promise<void> {
+    await api('/auth/mfa/disable', {
+      method: 'POST',
+      body: JSON.stringify({ password, code }),
     });
   }
 
@@ -119,6 +166,11 @@ export const useSessionStore = defineStore('session', () => {
     ready,
     avatarBlobUrl,
     login,
+    verifyMfa,
+    mfaStatus,
+    setupMfa,
+    enableMfa,
+    disableMfa,
     restore,
     logout,
     updateProfile,

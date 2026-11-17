@@ -1,5 +1,3 @@
-import { createReadStream } from 'node:fs';
-
 import { Controller, Delete, Get, Headers, Param, Query, Res } from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
 
@@ -120,7 +118,7 @@ export class FilesController {
     reply.header('content-type', file.contentType || 'application/octet-stream');
     reply.header('content-length', String(end - start + 1));
 
-    return objectStorage.openRange(file.objectPath, start, end);
+    return await objectStorage.openRange(file.objectPath, start, end);
   }
 
   @Get(':fileId/preview')
@@ -141,20 +139,25 @@ export class FilesController {
       throw new DomainError('SYS', 'VD-SYS-501', '该格式不支持服务端预览', { status: 415 });
     }
 
+    const materialized = await objectStorage.materializePlaintext(file.objectPath, file.fileName);
     let pdfPath: string;
     try {
       pdfPath = await previewAdapter.convertToPdf({
         fileId: file.fileId,
-        objectPath: objectStorage.resolve(file.objectPath),
+        objectPath: materialized.path,
       });
     } catch {
       throw new DomainError('SYS', 'VD-SYS-502', 'Office 预览暂不可用，请下载后查看', {
         status: 503,
       });
+    } finally {
+      await objectStorage.cleanupMaterialized(materialized);
     }
 
+    const pdfSize = await objectStorage.plaintextSize(pdfPath);
     reply.header('content-type', 'application/pdf');
     reply.header('content-disposition', 'inline');
-    return createReadStream(pdfPath);
+    reply.header('content-length', String(pdfSize));
+    return await objectStorage.openRange(pdfPath, 0, pdfSize - 1);
   }
 }

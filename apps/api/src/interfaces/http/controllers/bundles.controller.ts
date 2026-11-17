@@ -1,9 +1,8 @@
 import { Body, Controller, Get, Headers, HttpCode, Param, Post, Res } from '@nestjs/common';
-import { createReadStream } from 'node:fs';
 
 import type { FastifyReply } from 'fastify';
 
-import { dataRoot } from '../../../infrastructure/memory/upload-sessions';
+import { dataRoot, objectStorage } from '../../../infrastructure/memory/upload-sessions';
 import {
   buildBundle,
   bundles,
@@ -110,6 +109,6 @@ export class BundlesController {
     reply.header('content-type', 'application/zip');
     reply.header('content-disposition', `attachment; filename="vaultdeck-${bundleId}.zip"`);
     reply.header('content-length', String(bundle.totalBytes));
-    return createReadStream(bundle.zipPath);
+    return await objectStorage.openRange(bundle.zipPath, 0, bundle.totalBytes - 1);
   }
 }

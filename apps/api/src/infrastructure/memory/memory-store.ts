@@ -15,6 +15,7 @@ import type {
   StoreFolder,
   StoreLoginResult,
   StoreMember,
+  StoreMfaState,
   StorePort,
   StoreProject,
   StoreSettings,
@@ -30,6 +31,8 @@ export const TRASH_RETENTION_DAYS = Number(process.env['VD_TRASH_RETENTION_DAYS'
 
 interface UserRecord extends StoreUser {
   password: string;
+  mfaSecret: string | null;
+  mfaEnabledAt: string | null;
 }
 
 class MemoryStore implements StorePort {
@@ -63,14 +66,39 @@ class MemoryStore implements StorePort {
   }
 
   async login(username: string, password: string): Promise<StoreLoginResult | null> {
+    const user = await this.verifyCredentials(username, password);
+    if (!user) return null;
+    const token = await this.createSession(user.userId);
+    return { token, user };
+  }
+
+  async verifyCredentials(username: string, password: string): Promise<StoreUser | null> {
     const record = [...this.users.values()].find(
       (item) => item.username === username && item.status === 'active',
     );
     if (!record || record.password !== password) return null;
+    return this.toStoreUser(record);
+  }
 
+  async createSession(userId: string): Promise<string> {
     const token = randomUUID();
-    this.sessions.set(token, record.userId);
-    return { token, user: this.toStoreUser(record) };
+    this.sessions.set(token, userId);
+    return token;
+  }
+
+  async mfaState(userId: string): Promise<StoreMfaState> {
+    const record = this.users.get(userId);
+    return {
+      enabled: Boolean(record?.mfaEnabledAt),
+      secret: record?.mfaSecret ?? null,
+    };
+  }
+
+  async setMfaSecret(userId: string, secret: string | null, enabled: boolean): Promise<void> {
+    const record = this.users.get(userId);
+    if (!record) throw new Error('USER_NOT_FOUND');
+    record.mfaSecret = secret;
+    record.mfaEnabledAt = enabled ? new Date().toISOString() : null;
   }
 
   async logout(token: string): Promise<void> {
@@ -122,6 +150,8 @@ class MemoryStore implements StorePort {
       displayName: input.displayName,
       role: input.role,
       status: 'active',
+      mfaSecret: null,
+      mfaEnabledAt: null,
     };
     this.users.set(record.userId, record);
     return this.toStoreUser(record);
@@ -569,6 +599,8 @@ class MemoryStore implements StorePort {
       displayName,
       role,
       status: 'active',
+      mfaSecret: null,
+      mfaEnabledAt: null,
     };
     this.users.set(record.userId, record);
     return record;

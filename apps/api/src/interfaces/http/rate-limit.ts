@@ -39,6 +39,7 @@ const hits = new Map<string, { count: number; resetAt: number }>();
 function bucketFor(url: string): Bucket | null {
   if (url.startsWith('/api/v1/system/health')) return null;
   if (url.startsWith('/api/v1/auth/login')) return AUTH_BUCKET;
+  if (url.startsWith('/api/v1/auth/mfa')) return AUTH_BUCKET;
   if (url.includes('/upload-sessions/')) return UPLOAD_BUCKET;
   return DEFAULT_BUCKET;
 }

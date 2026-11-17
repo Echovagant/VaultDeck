@@ -12,13 +12,21 @@ import {
   Put,
   Res,
 } from '@nestjs/common';
-import { createReadStream } from 'node:fs';
 import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import type { FastifyReply } from 'fastify';
 
 import type { StoreUser } from '../../../application/ports/store.port';
+import { createMfaChallenge, verifyMfaChallenge } from '../../../infrastructure/auth/mfa-challenge';
+import { generateTotpSecret, otpauthUrl, verifyTotp } from '../../../infrastructure/auth/totp';
+import {
+  atRestKey,
+  openBuffer,
+  openText,
+  sealBuffer,
+  sealText,
+} from '../../../infrastructure/crypto/at-rest';
 import { store } from '../../../infrastructure/store';
 import { DomainError } from '../errors/problem-details';
 import { StrictBodyPipe } from '../validation/strict-body.pipe';
@@ -70,6 +78,49 @@ const changePasswordSchema = {
   properties: {
     currentPassword: { type: 'string', minLength: 1 },
     newPassword: { type: 'string', minLength: 8, maxLength: 256 },
+  },
+};
+
+interface MfaVerifyBody {
+  challengeToken: string;
+  code: string;
+}
+
+const mfaVerifySchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['challengeToken', 'code'],
+  properties: {
+    challengeToken: { type: 'string', minLength: 1, maxLength: 4096 },
+    code: { type: 'string', pattern: '^\\d{6}$' },
+  },
+};
+
+interface MfaCodeBody {
+  code: string;
+}
+
+const mfaCodeSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['code'],
+  properties: {
+    code: { type: 'string', pattern: '^\\d{6}$' },
+  },
+};
+
+interface MfaDisableBody {
+  password: string;
+  code: string;
+}
+
+const mfaDisableSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['password', 'code'],
+  properties: {
+    password: { type: 'string', minLength: 1, maxLength: 256 },
+    code: { type: 'string', pattern: '^\\d{6}$' },
   },
 };
 
@@ -138,6 +189,20 @@ export async function requireUser(header: string | undefined): Promise<StoreUser
   return user;
 }
 
+async function completeLogin(
+  user: StoreUser,
+  reply: FastifyReply,
+  authMode: string | undefined,
+  forwardedProto: string | undefined,
+) {
+  const token = await store.createSession(user.userId);
+  const secure = forwardedProto === 'https' || process.env['VD_COOKIE_SECURE'] === 'true';
+  reply.header('set-cookie', sessionCookie(token, SESSION_MAX_AGE_SECONDS, secure));
+  const principal = await toPrincipal(user);
+  // 浏览器使用 HttpOnly Cookie，不在响应体暴露 token；API 客户端仍可拿 Bearer token
+  return authMode === 'cookie' ? principal : { token, ...principal };
+}
+
 @Injectable()
 @Controller('auth')
 export class AuthController {
@@ -149,25 +214,217 @@ export class AuthController {
     @Headers('x-auth-mode') authMode?: string,
     @Headers('x-forwarded-proto') forwardedProto?: string,
   ) {
-    const result = await store.login(body.username, body.password);
-    if (!result) {
+    const user = await store.verifyCredentials(body.username, body.password);
+    if (!user) {
       throw new DomainError('AUTH', 'VD-AUTH-401', '用户名或口令不正确', { status: 401 });
     }
 
+    const mfa = await store.mfaState(user.userId);
+    if (mfa.enabled) {
+      let challenge: { token: string; expiresInSeconds: number };
+      try {
+        challenge = createMfaChallenge(user.userId);
+      } catch {
+        throw new DomainError('SYS', 'VD-SYS-503', 'MFA 暂不可用：服务端未配置加密密钥', {
+          status: 503,
+        });
+      }
+      await store.recordAudit({
+        actor: user,
+        action: 'auth.mfa_challenge',
+        objectType: 'user',
+        objectId: user.userId,
+        result: 'success',
+        detail: user.username,
+      });
+      return {
+        mfaRequired: true,
+        challengeToken: challenge.token,
+        expiresInSeconds: challenge.expiresInSeconds,
+      };
+    }
+
     await store.recordAudit({
-      actor: result.user,
+      actor: user,
       action: 'auth.login',
       objectType: 'user',
-      objectId: result.user.userId,
+      objectId: user.userId,
       result: 'success',
-      detail: result.user.username,
+      detail: user.username,
     });
 
-    const secure = forwardedProto === 'https' || process.env['VD_COOKIE_SECURE'] === 'true';
-    reply.header('set-cookie', sessionCookie(result.token, SESSION_MAX_AGE_SECONDS, secure));
-    const principal = await toPrincipal(result.user);
-    // 浏览器使用 HttpOnly Cookie，不在响应体暴露 token；API 客户端仍可拿 Bearer token
-    return authMode === 'cookie' ? principal : { token: result.token, ...principal };
+    return completeLogin(user, reply, authMode, forwardedProto);
+  }
+
+  @Post('mfa/verify')
+  @HttpCode(200)
+  async verifyMfa(
+    @Body(new StrictBodyPipe<MfaVerifyBody>(mfaVerifySchema)) body: MfaVerifyBody,
+    @Res({ passthrough: true }) reply: FastifyReply,
+    @Headers('x-auth-mode') authMode?: string,
+    @Headers('x-forwarded-proto') forwardedProto?: string,
+  ) {
+    let userId: string | null;
+    try {
+      userId = verifyMfaChallenge(body.challengeToken);
+    } catch {
+      throw new DomainError('SYS', 'VD-SYS-503', 'MFA 暂不可用：服务端未配置加密密钥', {
+        status: 503,
+      });
+    }
+    if (!userId) {
+      throw new DomainError('AUTH', 'VD-AUTH-401', 'MFA 挑战已失效，请重新登录', { status: 401 });
+    }
+
+    const user = await store.getUser(userId);
+    if (!user || user.status !== 'active') {
+      throw new DomainError('AUTH', 'VD-AUTH-401', '账号不可用', { status: 401 });
+    }
+    const state = await store.mfaState(user.userId);
+    if (!state.enabled || !state.secret) {
+      throw new DomainError('AUTH', 'VD-AUTH-401', 'MFA 未启用', { status: 401 });
+    }
+
+    let secret: string;
+    try {
+      secret = openText(state.secret);
+    } catch {
+      throw new DomainError('SYS', 'VD-SYS-503', 'MFA 密钥不可用，请联系管理员', { status: 503 });
+    }
+    if (!verifyTotp(secret, body.code)) {
+      await store.recordAudit({
+        actor: user,
+        action: 'auth.mfa_failed',
+        objectType: 'user',
+        objectId: user.userId,
+        result: 'denied',
+        detail: user.username,
+      });
+      throw new DomainError('AUTH', 'VD-AUTH-401', '动态验证码不正确', { status: 401 });
+    }
+
+    await store.recordAudit({
+      actor: user,
+      action: 'auth.login',
+      objectType: 'user',
+      objectId: user.userId,
+      result: 'success',
+      detail: `${user.username} (mfa)`,
+    });
+    return completeLogin(user, reply, authMode, forwardedProto);
+  }
+
+  @Get('mfa')
+  async mfaStatus(@Headers('authorization') authorization?: string) {
+    const user = await requireUser(authorization);
+    const state = await store.mfaState(user.userId);
+    return { enabled: state.enabled };
+  }
+
+  @Post('mfa/setup')
+  @HttpCode(200)
+  async setupMfa(@Headers('authorization') authorization?: string) {
+    const user = await requireUser(authorization);
+    if (!atRestKey()) {
+      throw new DomainError('SYS', 'VD-SYS-503', '未配置加密密钥，无法启用 MFA', {
+        status: 503,
+      });
+    }
+    const state = await store.mfaState(user.userId);
+    if (state.enabled) {
+      throw new DomainError('VAL', 'VD-VAL-409', 'MFA 已启用', { status: 409 });
+    }
+
+    const secret = generateTotpSecret();
+    await store.setMfaSecret(user.userId, sealText(secret), false);
+    await store.recordAudit({
+      actor: user,
+      action: 'auth.mfa_setup',
+      objectType: 'user',
+      objectId: user.userId,
+      result: 'success',
+      detail: 'secret generated',
+    });
+    return {
+      secret,
+      otpauthUrl: otpauthUrl('VaultDeck', user.username, secret),
+    };
+  }
+
+  @Post('mfa/enable')
+  @HttpCode(200)
+  async enableMfa(
+    @Body(new StrictBodyPipe<MfaCodeBody>(mfaCodeSchema)) body: MfaCodeBody,
+    @Headers('authorization') authorization?: string,
+  ) {
+    const user = await requireUser(authorization);
+    const state = await store.mfaState(user.userId);
+    if (state.enabled) {
+      throw new DomainError('VAL', 'VD-VAL-409', 'MFA 已启用', { status: 409 });
+    }
+    if (!state.secret) {
+      throw new DomainError('VAL', 'VD-VAL-001', '请先生成 MFA 密钥', { status: 400 });
+    }
+    let secret: string;
+    try {
+      secret = openText(state.secret);
+    } catch {
+      throw new DomainError('SYS', 'VD-SYS-503', 'MFA 密钥不可用，请重新生成', { status: 503 });
+    }
+    if (!verifyTotp(secret, body.code)) {
+      throw new DomainError('AUTH', 'VD-AUTH-401', '动态验证码不正确', { status: 401 });
+    }
+
+    await store.setMfaSecret(user.userId, state.secret, true);
+    await store.recordAudit({
+      actor: user,
+      action: 'auth.mfa_enable',
+      objectType: 'user',
+      objectId: user.userId,
+      result: 'success',
+      detail: user.username,
+    });
+    return { enabled: true };
+  }
+
+  @Post('mfa/disable')
+  @HttpCode(200)
+  async disableMfa(
+    @Body(new StrictBodyPipe<MfaDisableBody>(mfaDisableSchema)) body: MfaDisableBody,
+    @Headers('authorization') authorization?: string,
+  ) {
+    const user = await requireUser(authorization);
+    const verified = await store.verifyCredentials(user.username, body.password);
+    if (!verified) {
+      throw new DomainError('AUTH', 'VD-AUTH-401', '口令不正确', { status: 401 });
+    }
+
+    const state = await store.mfaState(user.userId);
+    if (!state.enabled || !state.secret) {
+      throw new DomainError('VAL', 'VD-VAL-409', 'MFA 未启用', { status: 409 });
+    }
+    let secret: string;
+    try {
+      secret = openText(state.secret);
+    } catch {
+      throw new DomainError('SYS', 'VD-SYS-503', 'MFA 密钥不可用，请联系管理员', { status: 503 });
+    }
+    if (!verifyTotp(secret, body.code)) {
+      throw new DomainError('AUTH', 'VD-AUTH-401', '动态验证码不正确', { status: 401 });
+    }
+
+    await store.setMfaSecret(user.userId, null, false);
+    const token = readBearerToken(authorization);
+    if (token) await store.revokeOtherSessions(user.userId, token);
+    await store.recordAudit({
+      actor: user,
+      action: 'auth.mfa_disable',
+      objectType: 'user',
+      objectId: user.userId,
+      result: 'success',
+      detail: user.username,
+    });
+    return { enabled: false };
   }
 
   @Post('logout')
@@ -255,7 +512,8 @@ export class AuthController {
     }
 
     await mkdir(AVATAR_ROOT, { recursive: true });
-    await writeFile(avatarPath(user.userId), body);
+    const key = atRestKey();
+    await writeFile(avatarPath(user.userId), key ? sealBuffer(body, key) : body);
     await writeFile(avatarMimePath(user.userId), detected.mime, 'utf8');
 
     await store.recordAudit({
@@ -303,8 +561,10 @@ export class AuthController {
     }
 
     const mime = (await readFile(avatarMimePath(userId), 'utf8').catch(() => 'image/png')).trim();
+    const data = openBuffer(await readFile(avatarPath(userId)));
     reply.header('content-type', mime || 'image/png');
     reply.header('cache-control', 'private, max-age=60');
-    return createReadStream(avatarPath(userId));
+    reply.header('content-length', String(data.length));
+    return data;
   }
 }

@@ -41,7 +41,13 @@
         <h2 class="login-title">登录资料系统</h2>
         <p class="login-sub">使用内部账号进入档案库</p>
 
-        <a-form layout="vertical" :model="form" class="login-form" @finish="onSubmit">
+        <a-form
+          v-if="!mfaChallenge"
+          layout="vertical"
+          :model="form"
+          class="login-form"
+          @finish="onSubmit"
+        >
           <a-form-item
             label="用户名"
             name="username"
@@ -73,6 +79,36 @@
           </a-button>
         </a-form>
 
+        <a-form v-else layout="vertical" :model="mfaForm" class="login-form" @finish="onVerify">
+          <div class="login-mfa-hint">
+            账号已启用双重验证。请输入身份验证器中的 6 位动态验证码。
+          </div>
+          <a-form-item
+            label="动态验证码"
+            name="code"
+            :rules="[
+              { required: true, message: '请输入 6 位动态验证码' },
+              { pattern: /^\d{6}$/, message: '动态验证码为 6 位数字' },
+            ]"
+          >
+            <a-input
+              v-model:value="mfaForm.code"
+              size="large"
+              inputmode="numeric"
+              autocomplete="one-time-code"
+              maxlength="6"
+              placeholder="000000"
+            />
+          </a-form-item>
+
+          <a-button type="primary" html-type="submit" size="large" block :loading="verifying">
+            验证并进入
+          </a-button>
+          <a-button type="link" block class="login-mfa-back" @click="backToPassword">
+            返回重新登录
+          </a-button>
+        </a-form>
+
         <div class="login-hint">
           <div class="login-hint-title">账号说明</div>
           <div class="login-hint-text">
@@ -94,26 +130,52 @@ import { message } from 'ant-design-vue';
 import { reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
-import { ApiError } from '@/api/client';
+import { ApiError, type MfaChallengeResponse } from '@/api/client';
 import { useSessionStore } from '@/stores/session';
 
 const session = useSessionStore();
 const router = useRouter();
 
 const form = reactive({ username: '', password: '' });
+const mfaForm = reactive({ code: '' });
+const mfaChallenge = ref<MfaChallengeResponse | null>(null);
 const loading = ref(false);
+const verifying = ref(false);
 
 async function onSubmit(): Promise<void> {
   if (loading.value) return;
   loading.value = true;
   try {
-    await session.login(form.username.trim(), form.password);
+    const challenge = await session.login(form.username.trim(), form.password);
+    if (challenge) {
+      mfaChallenge.value = challenge;
+      mfaForm.code = '';
+      return;
+    }
     await router.push('/projects');
   } catch (error) {
     message.error(error instanceof ApiError ? error.message : '登录失败');
   } finally {
     loading.value = false;
   }
+}
+
+async function onVerify(): Promise<void> {
+  if (!mfaChallenge.value || verifying.value) return;
+  verifying.value = true;
+  try {
+    await session.verifyMfa(mfaChallenge.value.challengeToken, mfaForm.code.trim());
+    await router.push('/projects');
+  } catch (error) {
+    message.error(error instanceof ApiError ? error.message : '验证失败');
+  } finally {
+    verifying.value = false;
+  }
+}
+
+function backToPassword(): void {
+  mfaChallenge.value = null;
+  mfaForm.code = '';
 }
 </script>
 
@@ -282,6 +344,21 @@ async function onSubmit(): Promise<void> {
   border-top: 1px solid var(--vd-border);
   color: var(--vd-text-secondary);
   font-size: 12px;
+}
+
+.login-mfa-hint {
+  margin: 0 0 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--vd-border);
+  border-radius: 8px;
+  background: rgba(180, 72, 44, 0.06);
+  color: var(--vd-text-secondary);
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+.login-mfa-back {
+  margin-top: 8px;
 }
 
 .login-hint-title {

@@ -74,6 +74,12 @@ export interface StoreLoginResult {
   user: StoreUser;
 }
 
+export interface StoreMfaState {
+  enabled: boolean;
+  /** 已加密的 TOTP 密钥；尚未设置时为 null */
+  secret: string | null;
+}
+
 export interface StoreSettings {
   maxUploadBytes: number;
   chunkSizeBytes: number;
@@ -174,9 +180,14 @@ export interface StoredObjectRecord {
 
 export interface StorePort {
   login(username: string, password: string): Promise<StoreLoginResult | null>;
+  verifyCredentials(username: string, password: string): Promise<StoreUser | null>;
+  createSession(userId: string): Promise<string>;
   logout(token: string): Promise<void>;
   userByToken(token: string): Promise<StoreUser | null>;
   countActiveSessions(): Promise<number>;
+
+  mfaState(userId: string): Promise<StoreMfaState>;
+  setMfaSecret(userId: string, secret: string | null, enabled: boolean): Promise<void>;
 
   listUsers(): Promise<StoreUser[]>;
   getUser(userId: string): Promise<StoreUser | null>;

@@ -30,7 +30,9 @@ const projects = await (await fetch(`${BASE}/projects`, { headers })).json();
 const demo = projects.items.find((item) => item.projectCode === 'DEMO-001') ?? projects.items[0];
 
 // 清理上次中断留下的探针（幂等）
-for (const file of (await (await fetch(`${BASE}/files?projectId=${demo.projectId}`, { headers })).json()).items) {
+for (const file of (
+  await (await fetch(`${BASE}/files?projectId=${demo.projectId}`, { headers })).json()
+).items) {
   if (!file.fileName.startsWith('integrity-probe-')) continue;
   await fetch(`${BASE}/files/${file.fileId}`, { method: 'DELETE', headers });
   await fetch(`${BASE}/trash/${file.fileId}`, { method: 'DELETE', headers });
@@ -45,7 +47,9 @@ const baseline = await scan();
 assert.equal(baseline.ok, true, `基线巡检应通过：${JSON.stringify(baseline.issues)}`);
 assert.equal(baseline.orphanFiles.length, 0);
 
-const folders = await (await fetch(`${BASE}/folders?projectId=${demo.projectId}`, { headers })).json();
+const folders = await (
+  await fetch(`${BASE}/folders?projectId=${demo.projectId}`, { headers })
+).json();
 const folderId = folders.items[0].folderId;
 
 const payload = randomBytes(32 * 1024);
@@ -66,14 +70,15 @@ const precheck = await (
 ).json();
 assert.equal(precheck.kind, 'new');
 const chunkDigest = createHash('sha256').update(payload).digest('base64');
-const chunkResponse = await fetch(
-  `${BASE}/upload-sessions/${precheck.sessionId}/chunks/0`,
-  {
-    method: 'PUT',
-    headers: { ...headers, 'content-type': 'application/octet-stream', digest: `sha-256=${chunkDigest}` },
-    body: payload,
+const chunkResponse = await fetch(`${BASE}/upload-sessions/${precheck.sessionId}/chunks/0`, {
+  method: 'PUT',
+  headers: {
+    ...headers,
+    'content-type': 'application/octet-stream',
+    digest: `sha-256=${chunkDigest}`,
   },
-);
+  body: payload,
+});
 assert.equal(chunkResponse.status, 200);
 const uploaded = await (
   await fetch(`${BASE}/upload-sessions/${precheck.sessionId}/complete`, {
@@ -94,8 +99,13 @@ writeFileSync(objectFile, corrupted);
 
 const corruptedScan = await scan();
 const issue = corruptedScan.issues.find((item) => item.sha256 === sha256);
-assert.ok(issue, '巡检未发现哈希不符对象');
-assert.equal(issue.reason, 'hash-mismatch');
+assert.ok(issue, '巡检未发现损坏对象');
+// 应用层加密后，翻转首字节会破坏 VDEN1 头：明文大小不可得时报告 size-mismatch，
+// 头仍可识别但 GCM 校验失败时报告 hash-mismatch。
+assert.ok(
+  issue.reason === 'hash-mismatch' || issue.reason === 'size-mismatch',
+  `损坏对象应被识别：${JSON.stringify(issue)}`,
+);
 
 const orphanDir = path.join(DATA_ROOT, 'objects', 'zz');
 mkdirSync(orphanDir, { recursive: true });

@@ -6,6 +6,8 @@ import path from 'node:path';
 import { ZipFile } from 'yazl';
 
 import type { StoreFile } from '../../application/ports/store.port';
+import { encryptFileInPlace } from '../crypto/at-rest';
+import { LocalObjectStorage } from './local-object-storage';
 
 export interface BundleRecord {
   bundleId: string;
@@ -28,11 +30,10 @@ export async function buildBundle(input: {
   const zipPath = path.join(dir, `${bundleId}.zip`);
 
   const zip = new ZipFile();
+  const storage = new LocalObjectStorage(input.root);
   for (const file of input.files) {
-    const objectPath = path.isAbsolute(file.objectPath)
-      ? file.objectPath
-      : path.resolve(input.root, file.objectPath);
-    zip.addFile(objectPath, file.fileName);
+    const stream = await storage.openRange(file.objectPath, 0, file.sizeBytes - 1);
+    zip.addReadStream(stream, file.fileName, { size: file.sizeBytes });
   }
   zip.end();
 
@@ -45,6 +46,7 @@ export async function buildBundle(input: {
   });
 
   const info = await stat(zipPath);
+  await encryptFileInPlace(zipPath).catch(() => undefined);
   const record: BundleRecord = {
     bundleId,
     ownerId: input.ownerId,

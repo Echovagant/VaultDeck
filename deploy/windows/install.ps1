@@ -43,7 +43,7 @@ Write-Output "current.txt -> $version"
 Write-Output ''
 Write-Output '=== ADMIN STEPS (run an elevated PowerShell) ==='
 Write-Output '1) machine env vars:'
-Write-Output '     setx /M VAULTDECK_HOME "' + $TargetHome + '"'
+Write-Output ('     setx /M VAULTDECK_HOME "' + $TargetHome + '"')
 Write-Output '     setx /M VAULTDECK_DB_URL "<connection string, local only>"'
 Write-Output '2) migrations (elevated shell with VAULTDECK_DB_URL set):'
 Write-Output ('     set VD_MIGRATIONS_DIR=' + $TargetHome + '\current\migrations')

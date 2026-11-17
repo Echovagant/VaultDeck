@@ -11,6 +11,7 @@
   <env name="VD_DATA_ROOT" value="%VAULTDECK_HOME%\data\storage" />
   <env name="VD_PREVIEW_CACHE" value="%VAULTDECK_HOME%\data\previews" />
   <env name="VD_AVATAR_ROOT" value="%VAULTDECK_HOME%\data\storage\avatars" />
+  <env name="VD_ENCRYPTION_KEY_FILE" value="%VAULTDECK_HOME%\secrets\encryption.key" />
   <env name="VD_SOFFICE_PATH" value="%VAULTDECK_HOME%\tools\libreoffice\program\soffice.exe" />
   <logpath>%VAULTDECK_HOME%\logs</logpath>
   <log mode="roll-by-size">
