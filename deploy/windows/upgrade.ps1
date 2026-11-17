@@ -16,8 +16,12 @@ function Copy-Into($src, $dst) {
   if ($LASTEXITCODE -ge 8) { throw "robocopy failed ($LASTEXITCODE): $src -> $dst" }
 }
 
-New-Item -ItemType Directory -Force -Path (Join-Path $TargetHome 'releases') | Out-Null
-Copy-Into $PackageDir (Join-Path $TargetHome ("releases\" + $version))
+# Snapshot only the versioned payload; whole-package copies are wasteful and can recurse
+# when TargetHome is inside PackageDir.
+$releaseDir = Join-Path $TargetHome ("releases\" + $version)
+New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
+Copy-Into (Join-Path $PackageDir 'current') (Join-Path $releaseDir 'current')
+Copy-Item (Join-Path $PackageDir 'VERSION') (Join-Path $releaseDir 'VERSION') -Force
 Copy-Into (Join-Path $PackageDir 'current') (Join-Path $TargetHome 'current')
 Copy-Into (Join-Path $PackageDir 'runtime') (Join-Path $TargetHome 'runtime')
 Copy-Into (Join-Path $PackageDir 'tools') (Join-Path $TargetHome 'tools')

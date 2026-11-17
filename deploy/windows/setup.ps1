@@ -1,15 +1,18 @@
 ﻿# VaultDeck 一键部署（管理员）：解包、初始化 PostgreSQL、生成密钥与证书、
-# 迁移数据库、注册并启动服务。所有生成物只落在 %VAULTDECK_HOME%，不会写回仓库。
-# 用法：
-#   powershell -ExecutionPolicy Bypass -File setup.ps1 -PackageDir <离线包目录> -TargetHome <部署目录>
+# 迁移数据库、注册并启动服务。所有生成物只落在部署目录，不会写回仓库。
+# 用法（在离线包根目录，以管理员身份运行）：
+#   powershell -ExecutionPolicy Bypass -File setup.ps1
+# 默认：PackageDir = 脚本所在目录，TargetHome = <PackageDir>\VaultDeck（不存在时自动创建）。
 # 可选：
+#   -TargetHome <部署目录> -DryRun   指定部署目录 / 只打印计划不做修改
 #   -PgPort 55432 -HttpsPort 8443 -HttpPort 80
 #   -RequireClientCert -ClientName phone
 #   -ServerDns vaultdeck.local -ServerIp <LAN_IP>
-#   -SkipFirewall -SkipServices
+#   -SkipFirewall -SkipServices -SkipMachineEnv -SkipPgService
+# 脚本不会重启电脑，也不会删除部署目录以外的文件。
 param(
-  [Parameter(Mandatory = $true)][string]$PackageDir,
-  [Parameter(Mandatory = $true)][string]$TargetHome,
+  [string]$PackageDir = '',
+  [string]$TargetHome = '',
   [int]$PgPort = 55432,
   [string]$PgServiceName = 'VaultDeckPostgres',
   [int]$HttpsPort = 8443,
@@ -21,25 +24,95 @@ param(
   [switch]$SkipFirewall,
   [switch]$SkipServices,
   [switch]$SkipMachineEnv,
-  [switch]$SkipPgService
+  [switch]$SkipPgService,
+  [switch]$DryRun,
+  [switch]$Force
 )
 
 $ErrorActionPreference = 'Stop'
+if (-not $PackageDir) { $PackageDir = $PSScriptRoot }
 $PackageDir = (Resolve-Path $PackageDir).Path
 if (-not (Test-Path (Join-Path $PackageDir 'VERSION'))) {
   throw "PackageDir 不是离线包根目录（缺 VERSION）：$PackageDir"
 }
 
+if (-not $TargetHome) { $TargetHome = Join-Path $PackageDir 'VaultDeck' }
+$TargetHome = [IO.Path]::GetFullPath($TargetHome).TrimEnd('\')
+
+# ---- 路径护栏：只允许写到明确的部署目录，避免误伤系统目录或覆盖用户文件夹 ----
+if ($TargetHome -eq $PackageDir) {
+  throw "TargetHome 不能等于离线包目录（会覆盖安装包本身）：$TargetHome"
+}
+$driveRoot = [IO.Path]::GetPathRoot($TargetHome).TrimEnd('\')
+if ($TargetHome -eq $driveRoot) {
+  throw "TargetHome 不能是磁盘根目录：$TargetHome"
+}
+$systemRoot = [IO.Path]::GetFullPath($env:SystemRoot).TrimEnd('\')
+$reservedRoots = @($systemRoot, $env:ProgramFiles, ${env:ProgramFiles(x86)}) | Where-Object { $_ }
+foreach ($reserved in $reservedRoots) {
+  $reserved = [IO.Path]::GetFullPath($reserved).TrimEnd('\')
+  if ($TargetHome.StartsWith($reserved + '\', [StringComparison]::OrdinalIgnoreCase)) {
+    throw "TargetHome 不能位于系统目录或 Program Files 下：$TargetHome"
+  }
+}
+if (-not $DryRun -and (Test-Path -LiteralPath $TargetHome)) {
+  $entries = @(Get-ChildItem -LiteralPath $TargetHome -Force)
+  $looksDeployed = (Test-Path (Join-Path $TargetHome 'current.txt')) -or `
+    (Test-Path (Join-Path $TargetHome 'current\api\main.js'))
+  if ($entries.Count -gt 0 -and -not $looksDeployed -and -not $Force) {
+    throw "目标目录非空且不像 VaultDeck 部署目录：$TargetHome。确认无误请加 -Force 重新执行。"
+  }
+}
+
 $principal = New-Object Security.Principal.WindowsPrincipal(
   [Security.Principal.WindowsIdentity]::GetCurrent()
 )
-if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-  throw 'setup.ps1 需要管理员权限，请用“以管理员身份运行”的 PowerShell 执行。'
+$isAdmin = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+if (-not $DryRun -and -not $isAdmin) {
+  throw 'setup.ps1 需要管理员权限（注册 Windows 服务、写防火墙规则、写机器级环境变量、设置目录 ACL），请用“以管理员身份运行”的 PowerShell 执行。'
+}
+
+$script:deployStart = Get-Date
+$script:totalSteps = 9
+$script:currentStep = 0
+
+Write-Output '=============================================='
+Write-Output '  VaultDeck 一键部署'
+Write-Output '=============================================='
+Write-Output ("  离线包    : " + $PackageDir)
+Write-Output ("  部署目录  : " + $TargetHome + "（不存在时自动创建）")
+Write-Output '  预计耗时  : 3-8 分钟（首次初始化 PostgreSQL 与等待服务启动占大部分）'
+Write-Output '  权限要求  : 管理员；仅用于注册服务、写防火墙规则、写机器级环境变量、收紧密钥目录 ACL'
+Write-Output '  会修改    : 部署目录、两个 VaultDeck 服务、PostgreSQL 服务、两条 LocalSubnet 防火墙规则、四个机器级环境变量'
+Write-Output '  不会      : 重启电脑、删除部署目录以外的文件、把端口开放给公网'
+Write-Output '  中断      : 可随时 Ctrl+C；重新执行同一命令可继续，已生成的口令与密钥会复用'
+if ($RequireClientCert) {
+  Write-Output '  双向 TLS  : 已启用，浏览器/客户端需要安装对应的客户端证书'
+}
+Write-Output ''
+
+if ($DryRun) {
+  Write-Output 'DryRun：以下为计划，不会做任何修改。'
+  Write-Output ("  1. 解包 current/runtime/tools 到 " + $TargetHome + "，并在 releases\ 下保留版本快照")
+  Write-Output ("  2. 创建 data\pgdata、certs、secrets、logs 等目录，收紧 secrets/certs 的 ACL")
+  Write-Output ("  3. 初始化 PostgreSQL 数据目录，监听 127.0.0.1:" + $PgPort + "，注册服务 " + $PgServiceName)
+  Write-Output '  4. 生成数据库口令、secrets\encryption.key 与本机 TLS 证书'
+  Write-Output ("  5. 执行数据库迁移，空库时创建初始领队 leader（口令写入 secrets\initial-admin.txt）")
+  Write-Output '  6. 注册/启动 vaultdeck-api、vaultdeck-web 两个 Windows 服务'
+  Write-Output ("  7. 放行 TCP " + $HttpsPort + " 与 " + $HttpPort + "（仅 LocalSubnet）")
+  Write-Output '  不重启电脑，不删除部署目录以外的文件。'
+  Write-Output '确认后去掉 -DryRun 执行。'
+  return
 }
 
 function Write-Step([string]$Text) {
-  Write-Output ""
-  Write-Output "=== $Text ==="
+  $script:currentStep++
+  $elapsed = (Get-Date) - $script:deployStart
+  Write-Output ''
+  Write-Output ("[{0}/{1}] {2}  (已用 {3:mm\:ss})" -f `
+      $script:currentStep, $script:totalSteps, $Text, $elapsed)
+  Write-Progress -Activity 'VaultDeck 部署' -Status $Text `
+    -PercentComplete ([int](100 * ($script:currentStep - 1) / $script:totalSteps))
 }
 
 function New-RandomToken([int]$Bytes) {
@@ -90,7 +163,7 @@ function Ensure-FirewallRule([string]$Name, [int]$Port) {
     -Action Allow -RemoteAddress LocalSubnet | Out-Null
 }
 
-Write-Step '1/9 解包到目标目录'
+Write-Step '解包到目标目录'
 & (Join-Path $PackageDir 'install.ps1') -TargetHome $TargetHome
 # install.ps1 内部使用 robocopy；其退出码 1 表示已复制文件，属成功，不能据此判失败。
 
@@ -107,7 +180,7 @@ Protect-Directory $certsDir
 $nodeExe = Join-Path $TargetHome 'runtime\node\node.exe'
 if (-not (Test-Path $nodeExe)) { throw "离线包缺少 Node 运行时：$nodeExe" }
 
-Write-Step '2/9 生成数据库口令与加密密钥'
+Write-Step '生成数据库口令与加密密钥'
 $adminPassword = Get-OrCreateSecret (Join-Path $secretsDir 'db-admin.pw') 32
 $appPassword = Get-OrCreateSecret (Join-Path $secretsDir 'db-app.pw') 32
 $encryptionKeyFile = Join-Path $secretsDir 'encryption.key'
@@ -128,7 +201,7 @@ if (Test-Path $dbEnvFile) {
   Set-Content -Path $dbEnvFile -Value "VD_DATABASE_URL=$dbUrl" -NoNewline -Encoding ASCII
 }
 
-Write-Step '3/9 初始化 PostgreSQL'
+Write-Step '初始化 PostgreSQL'
 $pgBin = Join-Path $TargetHome 'tools\postgresql\bin'
 foreach ($exe in @('initdb.exe', 'pg_ctl.exe', 'pg_isready.exe', 'psql.exe', 'createdb.exe')) {
   if (-not (Test-Path (Join-Path $pgBin $exe))) {
@@ -158,6 +231,10 @@ if ($SkipPgService) {
   Start-Postgres $pgCtl $pgData $pgLog $pgIsReady
 } else {
   # 注册为 Windows 服务，保证机器重启后数据库自动拉起；服务账户 LocalSystem 有数据目录访问权限。
+  $existingPgService = Get-CimInstance Win32_Service -Filter "Name='$PgServiceName'" -ErrorAction SilentlyContinue
+  if ($existingPgService -and $existingPgService.PathName -notmatch [regex]::Escape($pgData)) {
+    throw "已存在同名服务 $PgServiceName，但指向其他数据目录：$($existingPgService.PathName)。请用 -PgServiceName 指定其他名称。"
+  }
   if (Test-PgReady $pgIsReady) {
     & $pgCtl stop -m fast -D $pgData | Out-Null
     Start-Sleep -Seconds 2
@@ -197,7 +274,7 @@ try {
   Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue
 }
 
-Write-Step '4/9 生成 TLS 证书'
+Write-Step '生成 TLS 证书'
 $genCerts = Join-Path $TargetHome 'tools\setup\gen-certs.mjs'
 if (-not (Test-Path $genCerts)) { throw "离线包缺少证书生成脚本：$genCerts" }
 $serverCert = Join-Path $certsDir 'server.crt'
@@ -228,7 +305,7 @@ if (Test-Path (Join-Path $certsDir 'client-ca.crt')) {
   Copy-Item (Join-Path $certsDir 'client-ca.crt') (Join-Path $nginxCerts 'client-ca.crt') -Force
 }
 
-Write-Step '5/9 写入 Nginx 配置'
+Write-Step '写入 Nginx 配置'
 $nginxHome = Join-Path $TargetHome 'tools\nginx'
 $nginxConf = Join-Path $nginxHome 'conf\nginx.conf'
 $content = Get-Content $nginxConf -Raw
@@ -248,7 +325,7 @@ if ($RequireClientCert) {
 }
 Set-Content -Path $nginxConf -Value $content -Encoding ASCII
 
-Write-Step '6/9 写入机器环境变量'
+Write-Step '写入机器环境变量'
 if (-not $SkipMachineEnv) {
   [Environment]::SetEnvironmentVariable('VAULTDECK_HOME', $TargetHome, 'Machine')
   [Environment]::SetEnvironmentVariable('VAULTDECK_DB_URL', $dbUrl, 'Machine')
@@ -262,7 +339,7 @@ if (-not $SkipMachineEnv) {
   Write-Output 'skipped machine environment variables'
 }
 
-Write-Step '7/9 执行数据库迁移'
+Write-Step '执行数据库迁移'
 $env:VD_DATABASE_URL = $dbUrl
 $env:VD_MIGRATIONS_DIR = Join-Path $TargetHome 'current\migrations'
 & $nodeExe (Join-Path $TargetHome 'current\api\infrastructure\db\migrate-cli.js')
@@ -285,7 +362,7 @@ if ($bootstrap.created) {
   Write-Output '数据库中已有账号，跳过初始领队创建'
 }
 
-Write-Step '8/9 注册并启动服务'
+Write-Step '注册并启动服务'
 $apiXmlSource = Join-Path $TargetHome 'current\vaultdeck-api.xml'
 $webXmlSource = Join-Path $TargetHome 'current\vaultdeck-web.xml'
 Copy-Item $apiXmlSource (Join-Path $TargetHome 'tools\winsw\vaultdeck-api.xml') -Force
@@ -321,7 +398,7 @@ if (-not $SkipFirewall) {
   Ensure-FirewallRule 'VaultDeck HTTP' $HttpPort
 }
 
-Write-Step '9/9 冒烟检查'
+Write-Step '冒烟检查'
 if ($SkipServices) {
   Write-Output 'skipped service start and smoke check (SkipServices)'
 } else {
@@ -341,8 +418,10 @@ if ($SkipServices) {
   if ($httpsCode -ne '200') { throw "HTTPS 健康检查失败：HTTP $httpsCode" }
 }
 
+Write-Progress -Activity 'VaultDeck 部署' -Completed
+$totalElapsed = (Get-Date) - $script:deployStart
 Write-Output ''
-Write-Output 'VaultDeck 部署完成'
+Write-Output ('VaultDeck 部署完成（耗时 {0:mm\:ss}）' -f $totalElapsed)
 Write-Output ("  部署目录 : " + $TargetHome)
 Write-Output ("  访问地址 : https://localhost:" + $HttpsPort + "/")
 Write-Output ("  PostgreSQL: 127.0.0.1:" + $PgPort + " / vaultdeck")
@@ -355,3 +434,14 @@ if ($RequireClientCert) {
   Write-Output '  已启用双向 TLS：浏览器/客户端必须安装对应客户端证书。'
 }
 Write-Output '  数据库口令与加密密钥只保存在 secrets\ 下，请随部署目录一起备份，勿提交到仓库。'
+Write-Output ''
+Write-Output '本次脚本没有重启电脑，也没有删除部署目录以外的文件。'
+if ($SkipServices) {
+  Write-Output '（已跳过服务注册，开机自启未配置。）'
+} else {
+  $serviceNames = 'vaultdeck-api,vaultdeck-web'
+  if (-not $SkipPgService) { $serviceNames = $PgServiceName + ',' + $serviceNames }
+  Write-Output '开机自启验证（不需要重启机器）：'
+  Write-Output ('  Get-Service ' + $serviceNames + ' | Format-Table Name,Status,StartType')
+  Write-Output '  StartType 为 Automatic 即表示随 Windows 启动；实际重启验证请在方便时自行安排。'
+}

@@ -188,6 +188,9 @@ async function main() {
     throw new Error('apps/web/dist/index.html 不存在');
 
   await mkdir(staging, { recursive: true });
+  // Rebuilds reuse the same version directory; remove stale files from earlier builds.
+  await rm(staging, { recursive: true, force: true });
+  await mkdir(staging, { recursive: true });
   await mkdir(tmpRoot, { recursive: true });
   await mkdir(current, { recursive: true });
 
@@ -354,17 +357,33 @@ async function main() {
     [
       'VaultDeck offline package',
       '',
-      'Fresh install (run an elevated PowerShell from this directory):',
-      '  powershell -ExecutionPolicy Bypass -File setup.ps1 -PackageDir . -TargetHome <VAULTDECK_HOME>',
+      'Quick start (elevated PowerShell, from this directory):',
+      '  powershell -ExecutionPolicy Bypass -File setup.ps1',
+      '',
+      'Defaults: PackageDir = this folder, TargetHome = <this folder>\\VaultDeck',
+      '(created if missing). Override the location with -TargetHome <dir>; no drive',
+      'letter is assumed or hard-coded.',
+      '',
+      'Administrator rights are required for: registering the vaultdeck-api,',
+      'vaultdeck-web and PostgreSQL services, adding two LocalSubnet firewall',
+      'rules, writing machine-level environment variables, and tightening the',
+      'ACLs of secrets\\ and certs\\.',
+      '',
+      'Typical runtime: 3-8 minutes. Progress is printed as [n/9] with elapsed time.',
+      'The scripts never reboot the machine and never delete files outside the',
+      'deployment directory. Press Ctrl+C to abort; re-running reuses generated',
+      'passwords and the encryption key. Use -DryRun to print the plan only.',
       '',
       'setup.ps1 performs: copy files, init a local PostgreSQL cluster, generate',
       'database passwords + encryption key + TLS certificates, run migrations,',
       'create the initial leader account (password in secrets\\initial-admin.txt),',
       'register PostgreSQL and WinSW services, open firewall ports and smoke test.',
       'PostgreSQL is registered as a Windows service (default name VaultDeckPostgres)',
-      'so it starts automatically after a reboot.',
+      'so it starts automatically after a reboot. Verify autostart with',
+      'Get-Service instead of rebooting: StartType should be Automatic.',
       '',
       'Options:',
+      '  -TargetHome <dir> -DryRun -Force',
       '  -PgPort 55432 -PgServiceName VaultDeckPostgres -HttpsPort 8443 -HttpPort 80',
       '  -RequireClientCert -ClientName <name>   enable mutual TLS (generates client CA)',
       '  -ServerDns <name> -ServerIp <ip>        add SAN entries for LAN access',

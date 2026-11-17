@@ -43,14 +43,30 @@
 
 ### 2.2 一键部署
 
-离线包根目录以管理员 PowerShell 执行：
+离线包可解压到本机任意目录，不要求固定盘符。在包根目录以**管理员** PowerShell 执行：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File setup.ps1 -PackageDir . -TargetHome <VAULTDECK_HOME>
+powershell -ExecutionPolicy Bypass -File setup.ps1
 ```
 
-`setup.ps1` 依次完成：解包、初始化 `data\pgdata`、注册 PostgreSQL 服务（默认 `VaultDeckPostgres`，随机器自启）、生成数据库口令与 `secrets\encryption.key`、生成本机 TLS 证书、运行迁移、创建初始领队（`leader`，口令写入 `secrets\initial-admin.txt`，仅空库时执行）、注册 WinSW 服务、配置防火墙、冒烟检查。常用参数：
+默认 `PackageDir` 为脚本所在目录，`TargetHome` 为 `<PackageDir>\VaultDeck`，目录不存在时自动创建；需要换位置时显式指定：
 
+```powershell
+powershell -ExecutionPolicy Bypass -File setup.ps1 -TargetHome <部署目录>
+```
+
+- **耗时**：通常 3–8 分钟，控制台按 `[n/9]` 输出步骤与已用时间；首次初始化 PostgreSQL 与等待服务启动占大部分时间。
+- **管理员权限用途**：注册 `vaultdeck-api`、`vaultdeck-web` 与 PostgreSQL 服务，写两条 `LocalSubnet` 防火墙规则，写机器级环境变量，收紧 `secrets`/`certs` 的 ACL。除此之外不改系统设置。
+- **不会做的事**：不重启电脑、不删除部署目录以外的文件、不把端口开放给公网、不修改已有同名但指向其他数据目录的 PostgreSQL 服务（检测到会直接报错）。
+- **中断与重试**：可随时 Ctrl+C；重新执行同一命令会复用已生成的口令与密钥，不会重复初始化。
+- **只看计划**：加 `-DryRun`，只打印步骤与目标路径，不做任何修改。
+- **开机自启验证**：不要为了验收而重启机器。执行 `Get-Service vaultdeck-api,vaultdeck-web,VaultDeckPostgres | Format-Table Name,Status,StartType`，`StartType` 为 `Automatic` 即表示随 Windows 启动；实际重启验证请在方便时安排。
+
+`setup.ps1` 依次完成：解包（`releases\<version>` 只保留 `current` 快照用于回滚）、初始化 `data\pgdata`、注册 PostgreSQL 服务（默认 `VaultDeckPostgres`，随机器自启）、生成数据库口令与 `secrets\encryption.key`、生成本机 TLS 证书、运行迁移、创建初始领队（`leader`，口令写入 `secrets\initial-admin.txt`，仅空库时执行）、注册 WinSW 服务、配置防火墙、冒烟检查。常用参数：
+
+- `-TargetHome <dir>`：部署目录，默认 `<PackageDir>\VaultDeck`。
+- `-DryRun`：只打印计划与目标路径，不做修改。
+- `-Force`：目标目录非空且不像 VaultDeck 部署目录时，确认后强制继续。
 - `-PgPort 55432`：内置 PostgreSQL 端口，默认避开系统已占用的 5432。
 - `-PgServiceName VaultDeckPostgres`：PostgreSQL 的 Windows 服务名；已有同名服务时复用。
 - `-HttpsPort 8443 -HttpPort 80`：对外端口。
@@ -140,7 +156,7 @@ New-NetFirewallRule -DisplayName "VaultDeck HTTP" -Direction Inbound -Protocol T
 6. 上传 docx/xlsx，预览应在浏览器内直接渲染（不依赖服务端 LibreOffice）；PDF 用浏览器查看器打开。
 7. 若安装了可选 LibreOffice，再验证 pptx 的服务端预览。
 8. 删除文件进回收站，恢复后回到原文件夹。
-9. 重启两个服务，数据仍在（文件数、账号数、审计条数）。
+9. 重启两个服务（不是重启电脑），数据仍在（文件数、账号数、审计条数）。
 10. 检查 `data\storage\objects` 中对象文件头为 `VDEN1`（应用层加密）；用配置的密钥无法解密时，服务端应明确报错而不是返回明文。
 11. 在“系统设置 → 账号安全”启用 TOTP，退出后重新登录，确认需要动态码；停用后恢复仅口令登录。
 12. 若启用双向 TLS：无客户端证书访问 `/api/v1/projects` 应返回 401，安装客户端证书后恢复正常。
@@ -157,3 +173,18 @@ New-NetFirewallRule -DisplayName "VaultDeck HTTP" -Direction Inbound -Protocol T
 | MFA 依赖服务器时间                   | 时间偏差导致验证码失败         | 开启 Windows 时间同步；TOTP 允许前后一个时间窗                                |
 | 数据库与预览元数据未应用层加密       | 磁盘被拿走仍可能读到结构化数据 | 依赖 BitLocker + ACL；高敏场景再加数据库加密                                  |
 | 主机同时承担开发与服务               | 编译会打断访问                 | 开发实例与演示实例使用不同端口与数据目录                                      |
+
+## 10 数据丢失边界（不可恢复）
+
+VaultDeck 是单机资料管理工具，不是备份系统。回收站与 `scripts/backup` 只能覆盖误删和短时故障；以下情形没有软件层恢复手段：
+
+| 情形                                | 结果                                         | 应对                                                        |
+| ----------------------------------- | -------------------------------------------- | ----------------------------------------------------------- |
+| 删除文件并清空回收站/彻底删除       | 对象与数据库记录一起删除，系统内无副本       | 删除前确认；重要资料保留系统外副本                          |
+| 部署机器磁盘损坏、丢失或整机报废    | 文件、数据库、密钥同时不可用                 | 备份到另一块物理介质或另一台机器，定期做恢复演练            |
+| `secrets\encryption.key` 丢失或损坏 | 对象、分片、预览、头像无法解密，即使文件仍在 | 密钥离线保存多份，且与备份分开存放                          |
+| 数据库损坏且没有 `pg_dump` 备份     | 账号、项目、权限、审计、文件索引无法重建     | 每日 `pg_dump` + restic 备份；定期验证可恢复                |
+| 备份仓库口令丢失                    | restic 仓库无法打开，等同于没有备份          | 口令单独保存，ACL 不低于数据目录                            |
+| 部署目录被手工清空或格式化          | 运行文件、数据、密钥全部丢失                 | 部署目录不放在临时盘；升级与清理只操作 `current`/`releases` |
+
+对外说明中应明确：**VaultDeck 不能作为资料的唯一副本**。装机验收与交付时应向使用者说明上述边界。

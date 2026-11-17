@@ -23,8 +23,15 @@ function Copy-Into($src, $dst) {
   if ($LASTEXITCODE -ge 8) { throw "robocopy failed ($LASTEXITCODE): $src -> $dst" }
 }
 
-# immutable copy for rollback, then live copy
-Copy-Into $PackageDir (Join-Path $TargetHome ("releases\" + $version))
+# Immutable snapshot for rollback: rollback.ps1 only needs releases\<version>\current.
+# Copying the whole package would duplicate hundreds of MB and, when TargetHome lives
+# inside PackageDir (the default), would recursively copy the target into itself.
+$releaseDir = Join-Path $TargetHome ("releases\" + $version)
+New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
+Copy-Into (Join-Path $PackageDir 'current') (Join-Path $releaseDir 'current')
+Copy-Item (Join-Path $PackageDir 'VERSION') (Join-Path $releaseDir 'VERSION') -Force
+
+# live copy
 Copy-Into (Join-Path $PackageDir 'current') (Join-Path $TargetHome 'current')
 Copy-Into (Join-Path $PackageDir 'runtime') (Join-Path $TargetHome 'runtime')
 Copy-Into (Join-Path $PackageDir 'tools') (Join-Path $TargetHome 'tools')
