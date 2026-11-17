@@ -359,6 +359,7 @@ async function main() {
       '',
       'setup.ps1 performs: copy files, init a local PostgreSQL cluster, generate',
       'database passwords + encryption key + TLS certificates, run migrations,',
+      'create the initial leader account (password in secrets\\initial-admin.txt),',
       'register PostgreSQL and WinSW services, open firewall ports and smoke test.',
       'PostgreSQL is registered as a Windows service (default name VaultDeckPostgres)',
       'so it starts automatically after a reboot.',

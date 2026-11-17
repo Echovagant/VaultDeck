@@ -1,4 +1,4 @@
-import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 
 import type { Pool, PoolClient } from 'pg';
 
@@ -28,25 +28,12 @@ import type {
   UpdateFolderInput,
   UpdateUserInput,
 } from '../../application/ports/store.port';
+import { hashPassword, verifyPassword } from './password';
 
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 
 function sha256Hex(value: string): string {
   return createHash('sha256').update(value).digest('hex');
-}
-
-function hashPassword(password: string): string {
-  const salt = randomBytes(16);
-  const hash = scryptSync(password, salt, 64);
-  return `scrypt$${salt.toString('hex')}$${hash.toString('hex')}`;
-}
-
-function verifyPassword(password: string, stored: string): boolean {
-  const [scheme, saltHex, hashHex] = stored.split('$');
-  if (scheme !== 'scrypt' || !saltHex || !hashHex) return false;
-  const expected = Buffer.from(hashHex, 'hex');
-  const actual = scryptSync(password, Buffer.from(saltHex, 'hex'), expected.length);
-  return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
 
 function iso(value: unknown): string {

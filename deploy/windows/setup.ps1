@@ -268,6 +268,23 @@ $env:VD_MIGRATIONS_DIR = Join-Path $TargetHome 'current\migrations'
 & $nodeExe (Join-Path $TargetHome 'current\api\infrastructure\db\migrate-cli.js')
 if ($LASTEXITCODE -ne 0) { throw '数据库迁移失败' }
 
+# 空库首次部署时创建初始领队；已有账号的库不会被覆盖。
+$initialAdminPassword = Get-OrCreateSecret (Join-Path $secretsDir 'initial-admin.pw') 18
+$env:VD_BOOTSTRAP_ADMIN_USERNAME = 'leader'
+$env:VD_BOOTSTRAP_ADMIN_PASSWORD = $initialAdminPassword
+$env:VD_BOOTSTRAP_ADMIN_DISPLAY_NAME = '领队'
+$bootstrapOutput = & $nodeExe (Join-Path $TargetHome 'current\api\infrastructure\db\bootstrap-admin-cli.js')
+if ($LASTEXITCODE -ne 0) { throw '创建初始领队账号失败' }
+$bootstrapJson = ($bootstrapOutput | Where-Object { $_ -match '^\{' } | Select-Object -Last 1)
+$bootstrap = $bootstrapJson | ConvertFrom-Json
+if ($bootstrap.created) {
+  Set-Content -Path (Join-Path $secretsDir 'initial-admin.txt') `
+    -Value ("username=leader`npassword=" + $initialAdminPassword) -NoNewline -Encoding ASCII
+  Write-Output '初始领队账号已创建：leader（口令见 secrets\initial-admin.txt）'
+} else {
+  Write-Output '数据库中已有账号，跳过初始领队创建'
+}
+
 Write-Step '8/9 注册并启动服务'
 $apiXmlSource = Join-Path $TargetHome 'current\vaultdeck-api.xml'
 $webXmlSource = Join-Path $TargetHome 'current\vaultdeck-web.xml'
@@ -330,6 +347,9 @@ Write-Output ("  部署目录 : " + $TargetHome)
 Write-Output ("  访问地址 : https://localhost:" + $HttpsPort + "/")
 Write-Output ("  PostgreSQL: 127.0.0.1:" + $PgPort + " / vaultdeck")
 Write-Output ("  密钥文件 : " + $encryptionKeyFile)
+if (Test-Path (Join-Path $secretsDir 'initial-admin.txt')) {
+  Write-Output '  初始账号 : leader（口令见 secrets\initial-admin.txt，首次登录后请立即修改）'
+}
 if ($RequireClientCert) {
   Write-Output ("  客户端证书: " + (Join-Path $certsDir ("client-" + $ClientName + ".crt")))
   Write-Output '  已启用双向 TLS：浏览器/客户端必须安装对应客户端证书。'
