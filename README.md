@@ -54,6 +54,20 @@ powershell -ExecutionPolicy Bypass -File setup.ps1
 
 脚本会初始化内置 PostgreSQL、生成数据库口令与加密密钥、生成本机 TLS 证书、执行迁移、创建初始领队 `leader`（口令写入 `secrets\initial-admin.txt`）、注册服务并做冒烟检查。数据库口令、加密密钥、证书都在部署目录内自动生成，不依赖固定盘符，也不需要预先创建目录；详细参数见 `docs/ops/deployment.md`。
 
+#### 部署脚本会修改什么
+
+| 动作                                       | 范围                                                                                     | 可逆性                 |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------- | ---------------------- |
+| 注册 `vaultdeck-api`、`vaultdeck-web` 服务 | 本机服务列表，以 LocalSystem 运行                                                        | 可卸载                 |
+| 注册 PostgreSQL 服务 `VaultDeckPostgres`   | 本机服务列表，数据目录在部署目录内                                                       | 可卸载，数据随目录删除 |
+| 写 4 个机器级环境变量                      | `VAULTDECK_HOME`、`VAULTDECK_DB_URL`、`VD_ENCRYPTION_KEY_FILE`、`VD_REQUIRE_CLIENT_CERT` | 可改回或删除           |
+| 新增 2 条防火墙规则                        | TCP 8443 / 80，来源限 `LocalSubnet`                                                      | 可删除                 |
+| 收紧 `secrets`、`certs` 的 ACL             | 仅部署目录内这两个子目录                                                                 | 可按备份 ACL 恢复      |
+| `initdb` 初始化 `data\pgdata`              | 仅部署目录                                                                               | 删除部署目录即清除     |
+| 覆盖 `current`、`runtime`、`tools`         | 仅部署目录；旧版本在 `releases\` 保留快照                                                | 可回滚                 |
+
+不会重启电脑、不会删除部署目录以外的文件、不会把端口开放给公网。路径护栏会拒绝磁盘根目录、系统目录 / Program Files、与离线包相同的目录；目标目录非空且不像 VaultDeck 部署目录时需要显式加 `-Force`。已有同名但指向其他数据目录的 PostgreSQL 服务会直接报错，不会被复用。建议先核对发布包内的 `SHA256SUMS`，再以管理员身份运行。
+
 ### 源码开发（clone 后本地运行）
 
 ```bash
