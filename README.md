@@ -38,6 +38,18 @@
 
 环境要求：Node.js 24、npm、Git；使用 PostgreSQL 时另需 PostgreSQL 16。
 
+### 离线包一键部署（推荐）
+
+发布包根目录以管理员 PowerShell 执行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File setup.ps1 -PackageDir . -TargetHome <部署目录>
+```
+
+脚本会初始化内置 PostgreSQL、生成数据库口令与加密密钥、生成本机 TLS 证书、执行迁移、注册服务并做冒烟检查；详细参数见 `docs/ops/deployment.md`。
+
+### 源码开发
+
 ```bash
 npm install
 ```
