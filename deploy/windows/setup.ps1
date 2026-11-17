@@ -11,6 +11,7 @@ param(
   [Parameter(Mandatory = $true)][string]$PackageDir,
   [Parameter(Mandatory = $true)][string]$TargetHome,
   [int]$PgPort = 55432,
+  [string]$PgServiceName = 'VaultDeckPostgres',
   [int]$HttpsPort = 8443,
   [int]$HttpPort = 80,
   [switch]$RequireClientCert,
@@ -19,7 +20,8 @@ param(
   [string]$ServerIp = '',
   [switch]$SkipFirewall,
   [switch]$SkipServices,
-  [switch]$SkipMachineEnv
+  [switch]$SkipMachineEnv,
+  [switch]$SkipPgService
 )
 
 $ErrorActionPreference = 'Stop'
@@ -152,7 +154,28 @@ port = $PgPort
 password_encryption = 'scram-sha-256'
 "@
 }
-Start-Postgres $pgCtl $pgData $pgLog $pgIsReady
+if ($SkipPgService) {
+  Start-Postgres $pgCtl $pgData $pgLog $pgIsReady
+} else {
+  # 注册为 Windows 服务，保证机器重启后数据库自动拉起；服务账户 LocalSystem 有数据目录访问权限。
+  if (Test-PgReady $pgIsReady) {
+    & $pgCtl stop -m fast -D $pgData | Out-Null
+    Start-Sleep -Seconds 2
+  }
+  if (-not (Get-Service $PgServiceName -ErrorAction SilentlyContinue)) {
+    & $pgCtl register -N $PgServiceName -D $pgData -S auto
+    if ($LASTEXITCODE -ne 0) { throw "注册 PostgreSQL 服务失败：$PgServiceName" }
+  }
+  $pgService = Get-Service $PgServiceName
+  if ($pgService.Status -ne 'Running') { Start-Service $PgServiceName }
+  for ($i = 0; $i -lt 120; $i++) {
+    Start-Sleep -Milliseconds 500
+    if (Test-PgReady $pgIsReady) { break }
+  }
+  if (-not (Test-PgReady $pgIsReady)) {
+    throw "PostgreSQL 服务启动超时：$PgServiceName，请查看 $pgLog"
+  }
+}
 
 $env:PGPASSWORD = $adminPassword
 try {

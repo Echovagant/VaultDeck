@@ -49,13 +49,14 @@
 powershell -ExecutionPolicy Bypass -File setup.ps1 -PackageDir . -TargetHome <VAULTDECK_HOME>
 ```
 
-`setup.ps1` 依次完成：解包、初始化 `data\pgdata`、生成数据库口令与 `secrets\encryption.key`、生成本机 TLS 证书、运行迁移、注册 WinSW 服务、配置防火墙、冒烟检查。常用参数：
+`setup.ps1` 依次完成：解包、初始化 `data\pgdata`、注册 PostgreSQL 服务（默认 `VaultDeckPostgres`，随机器自启）、生成数据库口令与 `secrets\encryption.key`、生成本机 TLS 证书、运行迁移、注册 WinSW 服务、配置防火墙、冒烟检查。常用参数：
 
 - `-PgPort 55432`：内置 PostgreSQL 端口，默认避开系统已占用的 5432。
+- `-PgServiceName VaultDeckPostgres`：PostgreSQL 的 Windows 服务名；已有同名服务时复用。
 - `-HttpsPort 8443 -HttpPort 80`：对外端口。
 - `-ServerDns <name> -ServerIp <ip>`：追加证书 SAN，便于局域网 IP 访问。
 - `-RequireClientCert -ClientName <name>`：启用双向 TLS。
-- `-SkipFirewall -SkipServices`：只做准备，不碰防火墙/服务。
+- `-SkipFirewall -SkipServices -SkipMachineEnv -SkipPgService`：只做准备，不碰对应系统项。
 
 发布包不包含任何证书、私钥或数据库口令；这些都在目标机器上生成，位于 `secrets\` 与 `certs\`。
 
