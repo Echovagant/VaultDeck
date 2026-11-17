@@ -35,6 +35,15 @@ async function bootstrap(): Promise<void> {
   fastify.addHook('onRequest', (request, reply, done) => {
     const requestId = ensureRequestId(request as RequestWithId);
     void reply.header('x-request-id', requestId);
+    // HttpOnly Cookie 会话：没有 Authorization 头时，从 vd_session Cookie 恢复 Bearer
+    if (!request.headers.authorization && request.headers.cookie) {
+      const match = /(?:^|;\s*)vd_session=([^;]+)/.exec(request.headers.cookie);
+      const rawToken = match?.[1] ?? '';
+      const token = rawToken ? decodeURIComponent(rawToken) : '';
+      if (/^[A-Za-z0-9_-]+$/.test(token)) {
+        request.headers.authorization = `Bearer ${token}`;
+      }
+    }
     done();
   });
 

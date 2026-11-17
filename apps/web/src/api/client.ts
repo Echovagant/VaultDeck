@@ -1,5 +1,4 @@
 const BASE_PATH = '/api/v1';
-const TOKEN_KEY = 'vd_token';
 
 export class ApiError extends Error {
   readonly status: number;
@@ -13,20 +12,9 @@ export class ApiError extends Error {
   }
 }
 
-export function setToken(value: string | null): void {
-  if (value) localStorage.setItem(TOKEN_KEY, value);
-  else localStorage.removeItem(TOKEN_KEY);
-}
-
-export function getToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY);
-}
-
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   if (init.body) headers.set('content-type', 'application/json');
-  const token = getToken();
-  if (token) headers.set('authorization', `Bearer ${token}`);
 
   const response = await fetch(`${BASE_PATH}${path}`, { ...init, headers });
 
@@ -55,7 +43,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 export interface LoginResponse {
-  token: string;
+  token?: string;
   userId: string;
   username: string;
   displayName: string;

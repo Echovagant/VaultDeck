@@ -112,10 +112,18 @@ try {
   });
   await client.send('Page.navigate', { url: `${APP}/login` });
   await wait(2600);
+  await client.send('Network.enable');
+  await client.send('Network.setCookie', {
+    name: 'vd_session',
+    value: token,
+    domain: 'localhost',
+    path: '/',
+    httpOnly: true,
+    secure: false,
+    sameSite: 'Strict',
+  });
   await client.send('Runtime.evaluate', {
-    expression: `localStorage.setItem('vd_token', ${JSON.stringify(
-      token,
-    )}); localStorage.setItem('vd_theme', 'dark'); 'ok'`,
+    expression: `localStorage.setItem('vd_theme', 'dark'); 'ok'`,
   });
 
   const pages = [

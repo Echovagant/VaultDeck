@@ -29,6 +29,14 @@
 | WinSW 2.x        | 服务守护            | 从 NuGet 获取，需 .NET Framework 4.8    |
 | restic           | 备份                | 与 pg_dump 配合，见备份章节             |
 
+### 2.1 安全前置（必须）
+
+1. **数据目录 ACL**：`data\storage`、`data\previews`、`secrets`、`certs`、`logs`、PostgreSQL 数据目录只授予 `Administrators`、`SYSTEM` 与实际运行服务的账号；移除 `Authenticated Users` 与 `Users`。修改前备份 ACL，修改后逐个目录用 `icacls` 复核，并验证 API、PostgreSQL 与备份任务仍可读写。
+2. **磁盘加密**：系统盘与数据盘启用 BitLocker，恢复密钥离线保存。未加密磁盘被拿走时，文件对象与数据库文件可直接读取，应视为数据泄露。
+3. **网络边界**：8443/80 防火墙规则限制为 `LocalSubnet`；不要做公网端口映射。远程访问应通过 VPN 或受控反向代理。
+4. **证书**：客户端导入 CA，不要绕过浏览器证书警告；否则 TLS 的中间人防护会失效。
+5. **备份凭据**：restic 仓库口令单独保存，ACL 不低于数据目录；仓库与口令不要放在同一块可移动介质上。
+
 ## 3 证书
 
 服务器证书与 CA 只放在 `certs/`，不提交仓库。生成方式：

@@ -49,7 +49,7 @@
 import { message } from 'ant-design-vue';
 import { computed, onMounted, ref } from 'vue';
 
-import { ApiError, api, formatBytes, getToken, type ProjectSummary } from '@/api/client';
+import { ApiError, api, formatBytes, type ProjectSummary } from '@/api/client';
 
 interface TypeGroup {
   type: string;
@@ -114,10 +114,7 @@ async function exportCsv(): Promise<void> {
       body: JSON.stringify(body),
     });
 
-    const token = getToken();
-    const response = await fetch(`/api/v1/stats/exports/${created.exportId}/content`, {
-      headers: token ? { authorization: `Bearer ${token}` } : undefined,
-    });
+    const response = await fetch(`/api/v1/stats/exports/${created.exportId}/content`);
     if (!response.ok) throw new Error('导出失败');
 
     const blob = await response.blob();

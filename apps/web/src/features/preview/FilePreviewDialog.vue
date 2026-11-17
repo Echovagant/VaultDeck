@@ -43,8 +43,6 @@
 import { message } from 'ant-design-vue';
 import { nextTick, ref, watch } from 'vue';
 
-import { getToken } from '@/api/client';
-
 interface PreviewFile {
   fileId: string;
   fileName: string;
@@ -115,10 +113,7 @@ async function officeServerAvailable(): Promise<boolean> {
 }
 
 async function fetchContent(file: PreviewFile): Promise<Response> {
-  const token = getToken();
-  return fetch(`/api/v1/files/${file.fileId}/content`, {
-    headers: token ? { authorization: `Bearer ${token}` } : undefined,
-  });
+  return fetch(`/api/v1/files/${file.fileId}/content`);
 }
 
 function escapeHtml(value: string): string {
@@ -231,10 +226,7 @@ async function load(file: PreviewFile): Promise<void> {
         kind.value = 'unsupported';
         return;
       }
-      const token = getToken();
-      const response = await fetch(`/api/v1/files/${file.fileId}/preview`, {
-        headers: token ? { authorization: `Bearer ${token}` } : undefined,
-      });
+      const response = await fetch(`/api/v1/files/${file.fileId}/preview`);
       if (!response.ok) {
         unsupportedText.value = '服务端转换暂不可用，请下载后查看';
         kind.value = 'unsupported';
@@ -260,10 +252,7 @@ async function download(): Promise<void> {
   const file = props.file;
   if (!file) return;
   try {
-    const token = getToken();
-    const response = await fetch(`/api/v1/files/${file.fileId}/content`, {
-      headers: token ? { authorization: `Bearer ${token}` } : undefined,
-    });
+    const response = await fetch(`/api/v1/files/${file.fileId}/content`);
     if (!response.ok) throw new Error('下载失败');
     const blob = await response.blob();
     const url = URL.createObjectURL(blob);

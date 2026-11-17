@@ -653,6 +653,10 @@ export interface components {
             avatarUrl?: string;
             projectIds?: string[];
         };
+        LoginResult: components["schemas"]["Principal"] & {
+            /** @description API 客户端使用的 Bearer token；x-auth-mode=cookie 时不返回 */
+            token?: string;
+        };
         User: {
             /** Format: uuid */
             userId: string;
@@ -1071,7 +1075,10 @@ export interface operations {
     login: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description 传 cookie 时不返回 token，仅通过 HttpOnly Cookie 维持会话 */
+                "x-auth-mode"?: "cookie";
+            };
             path?: never;
             cookie?: never;
         };
@@ -1084,10 +1091,12 @@ export interface operations {
             /** @description 登录成功 */
             200: {
                 headers: {
+                    /** @description HttpOnly + SameSite=Strict 的 vd_session Cookie */
+                    "Set-Cookie"?: string;
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Principal"];
+                    "application/json": components["schemas"]["LoginResult"];
                 };
             };
             401: components["responses"]["Unauthorized"];

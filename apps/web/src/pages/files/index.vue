@@ -342,7 +342,6 @@ import {
   ApiError,
   api,
   formatBytes,
-  getToken,
   type FileItem,
   type FolderItem,
   type ProjectSummary,
@@ -913,10 +912,7 @@ async function bundleDownload(): Promise<void> {
       method: 'POST',
       body: JSON.stringify({ fileIds: ready.map((file) => file.fileId) }),
     });
-    const token = getToken();
-    const response = await fetch(`/api/v1/bundles/${result.bundleId}/content`, {
-      headers: token ? { authorization: `Bearer ${token}` } : undefined,
-    });
+    const response = await fetch(`/api/v1/bundles/${result.bundleId}/content`);
     if (!response.ok) throw new Error('打包下载失败');
     const blob = await response.blob();
     const url = URL.createObjectURL(blob);
@@ -932,10 +928,7 @@ async function bundleDownload(): Promise<void> {
 
 async function download(file: FileItem): Promise<void> {
   try {
-    const token = getToken();
-    const response = await fetch(`/api/v1/files/${file.fileId}/content`, {
-      headers: token ? { authorization: `Bearer ${token}` } : undefined,
-    });
+    const response = await fetch(`/api/v1/files/${file.fileId}/content`);
     if (!response.ok) throw new Error('下载失败');
     const blob = await response.blob();
     const url = URL.createObjectURL(blob);

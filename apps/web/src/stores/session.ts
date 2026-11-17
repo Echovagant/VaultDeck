@@ -4,8 +4,6 @@ import { ref } from 'vue';
 import {
   ApiError,
   api,
-  getToken,
-  setToken,
   type LoginResponse,
   type SessionUser,
 } from '@/api/client';
@@ -22,10 +20,7 @@ export const useSessionStore = defineStore('session', () => {
     if (!next?.avatarUrl) return;
 
     try {
-      const token = getToken();
-      const response = await fetch(next.avatarUrl, {
-        headers: token ? { authorization: `Bearer ${token}` } : undefined,
-      });
+      const response = await fetch(next.avatarUrl, { credentials: 'same-origin' });
       if (response.ok) {
         avatarBlobUrl.value = URL.createObjectURL(await response.blob());
       }
@@ -42,9 +37,9 @@ export const useSessionStore = defineStore('session', () => {
   async function login(username: string, password: string): Promise<void> {
     const result = await api<LoginResponse>('/auth/login', {
       method: 'POST',
+      headers: { 'x-auth-mode': 'cookie' },
       body: JSON.stringify({ username, password }),
     });
-    setToken(result.token);
     await applyUser({
       userId: result.userId,
       username: result.username,
@@ -55,12 +50,13 @@ export const useSessionStore = defineStore('session', () => {
   }
 
   async function restore(): Promise<void> {
+    // 清理旧版本遗留的 localStorage token；会话已迁移到 HttpOnly Cookie
+    localStorage.removeItem('vd_token');
     try {
       const me = await api<SessionUser>('/auth/me');
       await applyUser(me);
     } catch {
       await applyUser(null);
-      setToken(null);
     } finally {
       ready.value = true;
     }
@@ -70,7 +66,6 @@ export const useSessionStore = defineStore('session', () => {
     try {
       await api('/auth/logout', { method: 'POST' });
     } finally {
-      setToken(null);
       await applyUser(null);
     }
   }
@@ -84,13 +79,9 @@ export const useSessionStore = defineStore('session', () => {
   }
 
   async function uploadAvatar(blob: Blob): Promise<void> {
-    const token = getToken();
     const response = await fetch('/api/v1/auth/avatar', {
       method: 'POST',
-      headers: {
-        ...(token ? { authorization: `Bearer ${token}` } : {}),
-        'content-type': 'application/octet-stream',
-      },
+      headers: { 'content-type': 'application/octet-stream' },
       body: blob,
     });
     if (!response.ok) {

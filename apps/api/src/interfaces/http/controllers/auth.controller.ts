@@ -28,6 +28,13 @@ interface LoginBody {
   password: string;
 }
 
+const SESSION_COOKIE = 'vd_session';
+const SESSION_MAX_AGE_SECONDS = 8 * 60 * 60;
+
+function sessionCookie(token: string, maxAge: number, secure: boolean): string {
+  return `${SESSION_COOKIE}=${encodeURIComponent(token)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${maxAge}${secure ? '; Secure' : ''}`;
+}
+
 const loginSchema = {
   type: 'object',
   additionalProperties: false,
@@ -136,7 +143,12 @@ export async function requireUser(header: string | undefined): Promise<StoreUser
 export class AuthController {
   @Post('login')
   @HttpCode(200)
-  async login(@Body(new StrictBodyPipe<LoginBody>(loginSchema)) body: LoginBody) {
+  async login(
+    @Body(new StrictBodyPipe<LoginBody>(loginSchema)) body: LoginBody,
+    @Res({ passthrough: true }) reply: FastifyReply,
+    @Headers('x-auth-mode') authMode?: string,
+    @Headers('x-forwarded-proto') forwardedProto?: string,
+  ) {
     const result = await store.login(body.username, body.password);
     if (!result) {
       throw new DomainError('AUTH', 'VD-AUTH-401', '用户名或口令不正确', { status: 401 });
@@ -151,14 +163,22 @@ export class AuthController {
       detail: result.user.username,
     });
 
-    return { token: result.token, ...(await toPrincipal(result.user)) };
+    const secure = forwardedProto === 'https' || process.env['VD_COOKIE_SECURE'] === 'true';
+    reply.header('set-cookie', sessionCookie(result.token, SESSION_MAX_AGE_SECONDS, secure));
+    const principal = await toPrincipal(result.user);
+    // 浏览器使用 HttpOnly Cookie，不在响应体暴露 token；API 客户端仍可拿 Bearer token
+    return authMode === 'cookie' ? principal : { token: result.token, ...principal };
   }
 
   @Post('logout')
   @HttpCode(204)
-  async logout(@Headers('authorization') authorization?: string) {
+  async logout(
+    @Headers('authorization') authorization: string | undefined,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ) {
     const token = readBearerToken(authorization);
     if (token) await store.logout(token);
+    reply.header('set-cookie', sessionCookie('', 0, false));
     return { ok: true };
   }
 

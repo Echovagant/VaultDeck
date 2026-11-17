@@ -30,6 +30,12 @@ paths:
       tags: [auth]
       operationId: login
       security: []
+      parameters:
+        - name: x-auth-mode
+          in: header
+          required: false
+          schema: { type: string, enum: [cookie] }
+          description: 传 cookie 时不返回 token，仅通过 HttpOnly Cookie 维持会话
       requestBody:
         required: true
         content:
@@ -38,9 +44,13 @@ paths:
       responses:
         '200':
           description: 登录成功
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+              description: HttpOnly + SameSite=Strict 的 vd_session Cookie
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Principal' }
+              schema: { $ref: '#/components/schemas/LoginResult' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
   /auth/logout:
@@ -960,6 +970,14 @@ components:
         projectIds:
           type: array
           items: { type: string, format: uuid }
+    LoginResult:
+      allOf:
+        - $ref: '#/components/schemas/Principal'
+        - type: object
+          properties:
+            token:
+              type: string
+              description: API 客户端使用的 Bearer token；x-auth-mode=cookie 时不返回
     User:
       type: object
       required: [userId, username, displayName, role, status]

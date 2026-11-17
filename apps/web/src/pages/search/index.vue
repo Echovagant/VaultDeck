@@ -61,7 +61,7 @@ import { message } from 'ant-design-vue';
 import { onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
-import { ApiError, api, formatBytes, getToken } from '@/api/client';
+import { ApiError, api, formatBytes } from '@/api/client';
 import FilePreviewDialog from '@/features/preview/FilePreviewDialog.vue';
 
 interface SearchItem {
@@ -118,10 +118,7 @@ async function search(): Promise<void> {
 
 async function download(item: SearchItem): Promise<void> {
   try {
-    const token = getToken();
-    const response = await fetch(`/api/v1/files/${item.fileId}/content`, {
-      headers: token ? { authorization: `Bearer ${token}` } : undefined,
-    });
+    const response = await fetch(`/api/v1/files/${item.fileId}/content`);
     if (!response.ok) throw new Error('下载失败');
     const blob = await response.blob();
     const url = URL.createObjectURL(blob);

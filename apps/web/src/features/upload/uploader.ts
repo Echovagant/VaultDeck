@@ -1,13 +1,10 @@
 import { createSHA256 } from 'hash-wasm';
 
-import { getToken } from '@/api/client';
-
 const BASE = '/api/v1';
 const FALLBACK_CHUNK_SIZE = 8 * 1024 * 1024;
 
 function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
-  const token = getToken();
-  return token ? { ...extra, authorization: `Bearer ${token}` } : extra;
+  return extra;
 }
 
 async function sha256Hex(

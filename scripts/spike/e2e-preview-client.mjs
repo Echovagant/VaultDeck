@@ -152,10 +152,16 @@ try {
 
   await client.send('Page.navigate', { url: `${APP}/login` });
   await wait(1500);
-  await evaluate(
-    client,
-    `localStorage.setItem('vd_token', ${JSON.stringify(token)}); 'ok'`,
-  );
+  await client.send('Network.enable');
+  await client.send('Network.setCookie', {
+    name: 'vd_session',
+    value: token,
+    domain: 'localhost',
+    path: '/',
+    httpOnly: true,
+    secure: APP.startsWith('https'),
+    sameSite: 'Strict',
+  });
   await client.send('Page.navigate', { url: `${APP}/projects/${demo.projectId}/files` });
   await wait(1800);
   assert.ok(await poll(client, `Boolean(document.querySelector('.vd-sider'))`), '文件页未加载');
