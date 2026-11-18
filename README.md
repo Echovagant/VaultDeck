@@ -1,32 +1,50 @@
 # VaultDeck
 
-本地部署、局域网使用的团队资料管理系统。面向需要把项目资料集中存放、按权限共享、可审计、可备份的团队场景。
+局域网内自托管的团队资料管理系统。按项目归档文件，支持分片上传、断点续传、在线预览、权限与审计，部署在单台 Windows 主机上。
 
-![项目总览](docs/assets/screenshots/projects.png)
+[![CI](https://github.com/Echovagant/VaultDeck/actions/workflows/ci.yml/badge.svg)](https://github.com/Echovagant/VaultDeck/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/badge/release-v0.1.0-orange)](https://github.com/Echovagant/VaultDeck/releases)
+[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-4a5568)](#)
+[![Node](https://img.shields.io/badge/node-%E2%89%A524-339933)](package.json)
 
-## 功能特性
+![项目资料](docs/assets/screenshots/files-grid.png)
 
-- **大文件传输**：分片上传、断点续传、Range 下载、同哈希秒传、ZIP 打包下载
-- **内容寻址存储**：文件按 SHA-256 去重，对象与数据库记录分离，删除进入回收站
-- **在线预览**：PDF、图片、文本由浏览器原生打开；docx 用 `docx-preview`、xlsx 用 `ExcelJS` 在浏览器渲染；pptx 与老式 Office 格式可选 LibreOffice 服务端转换
-- **资料组织**：项目、文件夹、分类、文件名搜索、类型筛选
-- **权限与审计**：领队 / 执行领队 / 队员三级角色，项目成员隔离，操作日志追加写入
-- **账号管理**：不开放注册，领队可创建账号、重置口令、停用账号
-- **统计与导出**：按项目统计文件数、体积、类型分布，支持 CSV 导出
-- **回收站**：默认保留 10 天，支持恢复与彻底删除
-- **单机部署**：Windows + WinSW 服务 + Nginx TLS，可打离线发布包
+## 功能
 
-## 界面预览
+- **项目与目录**：按项目归档、文件夹树、网格/列表视图、类型筛选、文件名搜索
+- **大文件传输**：8 MB 分片、断点续传、Range 下载、SHA-256 秒传、ZIP 打包下载
+- **内容寻址存储**：相同内容只保留一份，删除进入回收站，默认保留 10 天
+- **在线预览**：PDF、图片、文本由浏览器直接打开；docx 与 xlsx 在浏览器内渲染；pptx 可选服务端 LibreOffice 转换
+- **权限**：领队 / 执行领队 / 队员三级角色，项目成员隔离，下载、预览、打包均校验权限
+- **审计**：登录、上传、下载、删除、恢复等操作追加写入，只增不改
+- **账号**：不开放注册，领队创建账号、重置口令、停用账号；支持 TOTP 双重验证
+- **统计**：按项目统计文件数、容量与类型分布，可导出 CSV
+- **部署**：Windows 服务 + Nginx TLS，离线包一键安装，可选双向 TLS
 
-| 示例项目                                       | 队员视角                                              |
-| ---------------------------------------------- | ----------------------------------------------------- |
-| ![示例项目](docs/assets/screenshots/files.png) | ![队员视角](docs/assets/screenshots/member-files.png) |
+## 界面
+
+| 项目与容量                                            | 文件列表                                               |
+| ----------------------------------------------------- | ------------------------------------------------------ |
+| ![项目](docs/assets/screenshots/projects.png)         | ![文件列表](docs/assets/screenshots/files.png)         |
+| **文件预览**（xlsx 浏览器渲染）                       | **文件名搜索**                                         |
+| ![预览](docs/assets/screenshots/file-preview.png)     | ![搜索](docs/assets/screenshots/search.png)            |
+| **数据统计**                                          | **操作日志**                                           |
+| ![统计](docs/assets/screenshots/stats.png)            | ![审计](docs/assets/screenshots/audit.png)             |
+| **账号管理**                                          | **系统设置与账号安全**                                 |
+| ![账号](docs/assets/screenshots/admin-users.png)      | ![设置](docs/assets/screenshots/settings-security.png) |
+| **队员视角**                                          | **资料分类**                                           |
+| ![队员视角](docs/assets/screenshots/member-files.png) | ![分类](docs/assets/screenshots/categories.png)        |
+
+登录页：
+
+![登录](docs/assets/screenshots/login.png)
 
 ## 技术栈
 
 | 层     | 选型                                                       |
 | ------ | ---------------------------------------------------------- |
-| 前端   | Vue 3 + TypeScript + Ant Design Vue                        |
+| 前端   | Vue 3 + TypeScript + Pinia + Ant Design Vue                |
 | 后端   | NestJS 11 + Fastify                                        |
 | 数据库 | PostgreSQL 16                                              |
 | 接入层 | Nginx（TLS 终止、静态资源、限流、反向代理）                |
@@ -36,105 +54,41 @@
 
 ## 快速开始
 
-环境要求：Node.js 24、npm、Git；使用 PostgreSQL 时另需 PostgreSQL 16。
+### 离线包部署（推荐）
 
-### 离线包一键部署（推荐）
-
-把发布包解压到本机任意目录（盘符与路径不限），在包根目录以**管理员** PowerShell 执行：
+从 [Releases](https://github.com/Echovagant/VaultDeck/releases) 下载 `VaultDeck-v0.1.0-offline.zip`，解压到本机任意目录，在包根目录以管理员 PowerShell 执行：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File setup.ps1
 ```
 
-- 默认部署目录为 `<发布包目录>\VaultDeck`，不存在时自动创建；需要换位置时加 `-TargetHome <部署目录>`。
-- 预计 3–8 分钟，控制台按 `[n/10]` 显示当前步骤与已用时间。
-- 需要管理员权限：注册 `vaultdeck-api`、`vaultdeck-web` 与 PostgreSQL 三个 Windows 服务，添加两条本地子网防火墙规则，写机器级环境变量，收紧 `secrets`/`certs` 目录 ACL。
-- 全新 Windows 无需预装 Node、PostgreSQL、Nginx；第一步会预检 64 位系统、.NET Framework 4.8、防火墙服务与包内运行时，缺依赖会直接报错并说明原因。
-- 脚本不会重启电脑、不会删除部署目录以外的文件、不会把端口开放给公网。可随时 Ctrl+C 中断，重新执行会复用已生成的口令与密钥。
-- 只想先看它准备做什么：加 `-DryRun`，只打印计划，不做任何修改。
-- 端口或服务名被占用时，可用 `-HttpsPort`、`-HttpPort`、`-ApiPort`、`-ApiServiceName`、`-WebServiceName`、`-FirewallRulePrefix` 调整；同机可以并存第二套实例。
+- 默认部署目录为 `<发布包目录>\VaultDeck`，不存在时自动创建；可用 `-TargetHome <目录>` 指定其他位置。
+- 预计 3–8 分钟；第一步会检查系统版本、.NET Framework 4.8、防火墙服务与包内运行时。
+- 需要管理员权限注册 Windows 服务、添加入站防火墙规则、写入机器级环境变量并收紧密钥目录 ACL。
+- 不会重启电脑，也不会删除部署目录以外的文件；`-DryRun` 只打印计划。
 
-脚本会初始化内置 PostgreSQL、生成数据库口令与加密密钥、生成本机 TLS 证书、执行迁移、创建初始领队 `leader`（口令写入 `secrets\initial-admin.txt`）、注册服务并做冒烟检查。数据库口令、加密密钥、证书都在部署目录内自动生成，不依赖固定盘符，也不需要预先创建目录；详细参数见 `docs/ops/deployment.md`。
+部署完成后访问 `https://localhost:8443/`，初始领队账号与口令见 `secrets\initial-admin.txt`。
 
-#### 部署脚本会修改什么
-
-| 动作                                       | 范围                                                                                     | 可逆性                 |
-| ------------------------------------------ | ---------------------------------------------------------------------------------------- | ---------------------- |
-| 注册 `vaultdeck-api`、`vaultdeck-web` 服务 | 本机服务列表，以 LocalSystem 运行                                                        | 可卸载                 |
-| 注册 PostgreSQL 服务 `VaultDeckPostgres`   | 本机服务列表，数据目录在部署目录内                                                       | 可卸载，数据随目录删除 |
-| 写 4 个机器级环境变量                      | `VAULTDECK_HOME`、`VAULTDECK_DB_URL`、`VD_ENCRYPTION_KEY_FILE`、`VD_REQUIRE_CLIENT_CERT` | 可改回或删除           |
-| 新增 2 条防火墙规则                        | TCP 8443 / 80，来源限 `LocalSubnet`                                                      | 可删除                 |
-| 收紧 `secrets`、`certs` 的 ACL             | 仅部署目录内这两个子目录                                                                 | 可按备份 ACL 恢复      |
-| `initdb` 初始化 `data\pgdata`              | 仅部署目录                                                                               | 删除部署目录即清除     |
-| 覆盖 `current`、`runtime`、`tools`         | 仅部署目录；旧版本在 `releases\` 保留快照                                                | 可回滚                 |
-
-不会重启电脑、不会删除部署目录以外的文件、不会把端口开放给公网。路径护栏会拒绝磁盘根目录、系统目录 / Program Files、与离线包相同的目录；目标目录非空且不像 VaultDeck 部署目录时需要显式加 `-Force`。已有同名但指向其他数据目录的 PostgreSQL 服务会直接报错，不会被复用。建议先核对发布包内的 `SHA256SUMS`，再以管理员身份运行。
-
-### 源码开发（clone 后本地运行）
+### 源码开发
 
 ```bash
 npm install
 ```
 
-`npm install` 约 1–3 分钟，随后按下方“本地体验”启动即可，开发模式不需要管理员权限。注意：**从源码构建离线发布包还需要 Nginx、PostgreSQL、WinSW、restic 的官方安装件，仓库不包含这些二进制**；面向实际使用的部署请直接下载 Release 页面的离线包。
-
-### 本地体验（内存存储，重启后数据清空）
+内存存储模式（重启后数据清空）：
 
 ```bash
 VD_BOOTSTRAP_DEMO=true npm run dev --workspace @vaultdeck/api
 npm run dev --workspace @vaultdeck/web
 ```
 
-Windows PowerShell：
+Windows PowerShell 中把 `VD_BOOTSTRAP_DEMO=true` 写成 `$env:VD_BOOTSTRAP_DEMO='true'`。前端默认 `http://localhost:5173`，Vite 将 `/api` 代理到后端。
 
-```powershell
-$env:VD_BOOTSTRAP_DEMO='true'
-npm run dev --workspace @vaultdeck/api
-npm run dev --workspace @vaultdeck/web
-```
-
-前端默认 `http://localhost:5173`，后端 `http://127.0.0.1:3000`，Vite 会把 `/api` 代理到后端。
-
-### 使用 PostgreSQL
-
-```bash
-export VD_STORE=postgres
-export VD_DATABASE_URL='postgresql://user:password@127.0.0.1:5432/vaultdeck'
-npm run db:migrate
-export VD_BOOTSTRAP_DEMO=true
-npm run dev --workspace @vaultdeck/api
-npm run dev --workspace @vaultdeck/web
-```
-
-Windows PowerShell 中把 `export NAME=value` 写成 `$env:NAME='value'`。
-
-首次在空库启动时，`VD_BOOTSTRAP_DEMO=true` 会创建演示账号：
-
-| 账号     | 初始口令    | 角色     |
-| -------- | ----------- | -------- |
-| `leader` | `leader123` | 领队     |
-| `deputy` | `deputy123` | 执行领队 |
-| `member` | `member123` | 队员     |
-
-演示账号仅用于首次初始化，登录后请立即修改口令；正式环境不要长期保留默认口令。
-
-生产部署、证书、服务注册、升级与回滚见 `docs/ops/deployment.md`。
-
-## 目录
-
-```
-apps/api         后端服务
-apps/web         前端应用
-packages/shared  契约生成类型与共享常量
-contracts        对外契约（OpenAPI）
-deploy/windows   Windows 发布包与服务定义
-docs             设计、决策与运维文档
-scripts          开发、验收、备份与发布脚本
-```
+使用 PostgreSQL 时设置 `VD_STORE=postgres`、`VD_DATABASE_URL`，执行 `npm run db:migrate` 后启动。空库首次使用 `VD_BOOTSTRAP_DEMO=true` 会创建 `leader` / `deputy` / `member` 三个演示账号；仅用于首次初始化，登录后请立即修改口令。
 
 ## 性能参考
 
-同一套代码在不同硬件环境下的传输速度存在明显差异。以下为参考环境实测值，仅作量级参考：
+同一套代码在不同硬件上的差异较大，以下为参考环境实测值，仅作量级参考：
 
 | 环境          | 数据量              | 上传       | 下载       | 备份       |
 | ------------- | ------------------- | ---------- | ---------- | ---------- |
@@ -143,38 +97,44 @@ scripts          开发、验收、备份与发布脚本
 | 外置盘（USB） | 10 × 10 GB，10 并发 | 22.8 MB/s  | —          | —          |
 | 外置盘（USB） | 20 GB，单文件       | 30.6 MB/s  | —          | —          |
 
-- 表中内置盘的实测环境为 NVMe SSD，外置盘为 USB 接口；机械硬盘、SATA SSD、不同 USB 版本的速度会明显不同，请以目标机器实测为准。
-- 实际速度还受 CPU、内存、网络、文件大小、并发数、杀毒或索引软件等因素影响。
-- 上传完成后，服务端还需要合并分片并校验哈希；文件越大、磁盘越慢，这一步耗时越明显。该步骤采用异步任务，客户端会轮询合并状态。
-- 秒传仅对系统中已存在的相同文件生效，不会改变首次上传的速度。
+表中内置盘为 NVMe SSD，外置盘为 USB 接口；机械硬盘、SATA SSD 与不同 USB 版本会明显不同，请以目标机器实测为准。
 
-## 安全说明
+## 安全与数据边界
 
-- 传输：HTTPS/TLS 1.2+、HSTS、CSP；登录会话使用 HttpOnly + SameSite=Strict Cookie。
-- 权限：三角色、项目成员隔离、操作审计、登录限流；文件下载、预览与打包都校验权限。
-- 存储：文件对象、上传分片、预览缓存与头像使用 AES-256-GCM 应用层加密，密钥保存在部署目录的 `secrets\encryption.key`，不随仓库或发布包分发。
-- 登录：支持 TOTP 双重验证（MFA），可在“系统设置 → 账号安全”启用；MFA 密钥加密后存入数据库。
-- 边界：可选双向 TLS（客户端证书）；8443/80 防火墙规则限制为局域网；数据库与后端端口只监听本机。
-- 部署前置：数据目录 ACL 仅授予 Administrators、SYSTEM 与服务账号；启用 BitLocker 并离线保存恢复密钥；备份口令与备份仓库分开保存。
-- 数据库中的结构化元数据未做应用层加密，依赖 BitLocker 与 ACL；不要把 8443 直接暴露到公网。加密密钥丢失后历史对象无法解密，必须与备份分开离线保存。
+- 传输使用 HTTPS/TLS 1.2+、HSTS 与 CSP；登录会话使用 HttpOnly + SameSite=Strict Cookie。
+- 文件对象、上传分片、预览缓存与头像使用 AES-256-GCM 应用层加密，密钥位于部署目录的 `secrets\encryption.key`。
+- 数据库中的结构化元数据未做应用层加密，依赖 BitLocker 与目录 ACL；不要把服务直接暴露到公网。
+- 加密密钥丢失后历史对象无法解密，必须与备份分开、离线保存。
 
-## 数据丢失与不可恢复
+以下情况无法通过本系统恢复：删除并清空回收站；磁盘或整机损坏且无备份；加密密钥丢失；数据库损坏且无 `pg_dump` 备份；备份仓库口令丢失。**VaultDeck 不是备份系统，不能作为资料的唯一副本。**
 
-本项目不是云盘，也不是备份系统；回收站和备份脚本只能覆盖部分误删与短时故障。以下情形**数据无法通过本系统恢复**，请提前知悉：
+详细说明见 [部署手册](docs/ops/deployment.md)。
 
-- **主动删除且清空回收站**：在界面中删除文件后，如果又清空了回收站或执行“彻底删除”，文件对象与数据库记录会一并删除，系统内没有副本。
-- **部署机器损坏、丢失或报废**：单机部署没有副本机制；如果同时没有可用的备份，文件和元数据都会永久丢失。请把备份放到另一块物理介质或另一台机器，并定期做恢复演练。
-- **加密密钥丢失**：`secrets\encryption.key` 一旦丢失或损坏，磁盘上的对象、分片、预览、头像即使还在也无法解密。密钥必须与备份分开、离线保存多份。
-- **数据库损坏且没有备份**：账号、项目、权限、审计与文件索引无法重建；文件对象可能仍在 `data\storage` 下，但已失去可用的对应关系。
-- **备份仓库口令丢失**：restic 仓库内的备份无法打开，等同于没有备份。
+## 免责声明
 
-因此：不要把 VaultDeck 当作唯一副本；重要资料至少保留一份系统外的独立备份。备份与恢复方法见 `docs/ops/deployment.md`。
+本项目按“现状”提供，不附带任何明示或暗示的担保。部署者需自行负责数据备份、访问控制、账号管理以及所在组织的合规要求。
+
+- 因误删、清空回收站、磁盘或整机损坏、密钥丢失、未做备份等原因造成的数据丢失，作者不承担责任。
+- 将服务暴露到公网、使用弱口令、转交管理员权限等行为带来的未授权访问或数据泄露风险，由部署者承担。
+- 作者不对因使用或无法使用本软件造成的任何直接或间接损失承担责任。
+
+## 目录
+
+```
+apps/api         后端服务
+apps/web         前端应用
+packages/shared  契约生成的类型与共享常量
+contracts        OpenAPI 契约
+deploy/windows   Windows 发布包与安装脚本
+docs             设计、决策与运维文档
+scripts          开发、验收、备份与发布脚本
+```
 
 ## 文档
 
 - 实现方案：`docs/design/design.md`
 - 架构决策：`docs/decisions/`
-- 运维文档：`docs/ops/`
+- 运维手册：`docs/ops/deployment.md`
 
 ## License
 

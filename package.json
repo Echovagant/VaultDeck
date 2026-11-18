@@ -1,6 +1,6 @@
 {
   "name": "vaultdeck",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "license": "MIT",
   "description": "Local-first team data management system",
