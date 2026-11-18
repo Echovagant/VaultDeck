@@ -1,5 +1,6 @@
 const BASE_PATH = '/api/v1';
 
+/** 统一的 API 错误类型，携带 HTTP 状态码与业务错误码。 */
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
@@ -12,6 +13,7 @@ export class ApiError extends Error {
   }
 }
 
+/** 封装 fetch：自动处理 JSON、204 空响应与 problem+json 错误。 */
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   if (init.body) headers.set('content-type', 'application/json');
@@ -104,6 +106,7 @@ export interface FileItem {
   hasContent?: boolean;
 }
 
+/** 把字节数格式化为 KB/MB/GB，保留一位小数。 */
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   const units = ['KB', 'MB', 'GB', 'TB'];

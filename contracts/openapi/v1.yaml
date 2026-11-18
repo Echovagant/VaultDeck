@@ -692,19 +692,6 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Bundle' }
         '400': { $ref: '#/components/responses/BadRequest' }
-  /bundles/{bundleId}:
-    get:
-      tags: [bundles]
-      operationId: getBundle
-      parameters:
-        - $ref: '#/components/parameters/BundleId'
-      responses:
-        '200':
-          description: 打包状态
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Bundle' }
-        '404': { $ref: '#/components/responses/NotFound' }
   /bundles/{bundleId}/content:
     get:
       tags: [bundles]
@@ -1364,7 +1351,6 @@ components:
         status: { type: string, enum: [queued, building, ready, failed, expired] }
         totalBytes: { type: integer, minimum: 0 }
         chunkedRanges: { type: boolean }
-        statusUrl: { type: string }
     TrashEntry:
       type: object
       required: [trashId, resourceType, resourceId, deletedAt, expireAt]

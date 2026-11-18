@@ -38,6 +38,7 @@ export class LocalObjectStorage {
     return path.isAbsolute(relPath) ? relPath : path.resolve(this.root, relPath);
   }
 
+  /** 保存单个上传分片；配置密钥时按 VDCH1 加密落盘。 */
   async saveChunk(sessionId: string, index: number, data: Buffer): Promise<void> {
     const dir = this.chunkDir(sessionId);
     await mkdir(dir, { recursive: true });
@@ -45,6 +46,7 @@ export class LocalObjectStorage {
     await writeFile(path.join(dir, `${index}.part`), key ? sealBuffer(data, key) : data);
   }
 
+  /** 合并分片并校验明文 SHA-256 / 大小；密文模式下边解密边重加密。 */
   async mergeChunks(
     sessionId: string,
     chunkCount: number,
@@ -116,6 +118,7 @@ export class LocalObjectStorage {
     return { objectPath: this.objectKey(expectedSha256), sizeBytes };
   }
 
+  /** 判断内容对象是否已存在，用于秒传。 */
   async objectExists(sha256: string): Promise<boolean> {
     try {
       const info = await stat(this.objectPath(sha256));
@@ -146,10 +149,12 @@ export class LocalObjectStorage {
     return createAtRestReadStream(target, header, start, end);
   }
 
+  /** 返回对象明文大小；密文按对象头计算。 */
   async plaintextSize(objectPath: string): Promise<number> {
     return plaintextSizeOf(this.resolve(objectPath));
   }
 
+  /** 对对象明文计算 SHA-256，供巡检使用。 */
   async hashPlaintext(objectPath: string): Promise<string> {
     return hashPlaintextFile(this.resolve(objectPath));
   }
@@ -176,6 +181,7 @@ export class LocalObjectStorage {
     if (materialized.temporary) await rm(materialized.path, { force: true });
   }
 
+  /** 删除上传会话的分片目录，合并完成或取消后调用。 */
   async cleanupSession(sessionId: string): Promise<void> {
     await rm(this.chunkDir(sessionId), { recursive: true, force: true });
   }

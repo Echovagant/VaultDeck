@@ -75,22 +75,6 @@ export class BundlesController {
       bundleId: bundle.bundleId,
       totalBytes: bundle.totalBytes,
       chunkedRanges: false,
-      statusUrl: `/api/v1/bundles/${bundle.bundleId}`,
-    };
-  }
-
-  @Get(':bundleId')
-  async get(@Param('bundleId') bundleId: string, @Headers('authorization') authorization?: string) {
-    const user = await requireUser(authorization);
-    const bundle = bundles.get(bundleId);
-    if (!bundle || bundle.ownerId !== user.userId) {
-      throw new DomainError('AUTH', 'VD-AUTH-404', '打包任务不存在', { status: 404 });
-    }
-    return {
-      bundleId: bundle.bundleId,
-      status: 'ready',
-      totalBytes: bundle.totalBytes,
-      chunkedRanges: false,
     };
   }
 

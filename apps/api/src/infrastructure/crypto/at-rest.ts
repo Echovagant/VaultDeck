@@ -133,6 +133,7 @@ function parseHeader(buffer: Buffer): ObjectHeader | null {
   };
 }
 
+/** 读取对象头；文件不是 VDEN1 密文时返回 null。 */
 export async function readObjectHeader(filePath: string): Promise<ObjectHeader | null> {
   let handle: FileHandle | null = null;
   try {
@@ -157,6 +158,7 @@ export async function readObjectHeader(filePath: string): Promise<ObjectHeader |
   }
 }
 
+/** 同步判断文件是否以 VDEN1 开头，供迁移与运维脚本使用。 */
 export function isEncryptedFileSync(filePath: string): boolean {
   let fd: number | null = null;
   try {
@@ -182,6 +184,7 @@ async function readExact(handle: FileHandle, offset: number, length: number): Pr
   return buffer;
 }
 
+/** 按帧写入 VDEN1 对象；成功结束调用 end()，中途失败调用 abort()。 */
 export class AtRestWriter {
   private frame = Buffer.alloc(0);
   private frameIndex = 0;
@@ -195,6 +198,7 @@ export class AtRestWriter {
     private readonly frameBytes: number,
   ) {}
 
+  /** 创建目标文件并写入对象头；plainSize 决定读取端的最后一帧长度。 */
   static async create(filePath: string, plainSize: number, key: Buffer): Promise<AtRestWriter> {
     const handle = await open(filePath, 'w');
     const header = Buffer.alloc(HEADER_BYTES);
@@ -208,6 +212,7 @@ export class AtRestWriter {
     return writer;
   }
 
+  /** 追加明文；内部按 1 MiB 切帧，满帧立即加密落盘。 */
   async write(chunk: Buffer): Promise<void> {
     if (this.closed) throw new StorageUnavailable('写入已关闭');
     let offset = 0;
@@ -220,6 +225,7 @@ export class AtRestWriter {
     }
   }
 
+  /** 刷出最后一帧并关闭文件；重复调用安全。 */
   async end(): Promise<void> {
     if (this.closed) return;
     if (this.frame.length > 0) await this.flushFrame();
@@ -228,6 +234,7 @@ export class AtRestWriter {
     await this.handle.close();
   }
 
+  /** 放弃写入并关闭句柄；临时文件由调用方清理。 */
   async abort(): Promise<void> {
     if (this.closed) return;
     this.closed = true;
@@ -322,6 +329,7 @@ export function createAtRestReadStream(
   return Readable.from(generate());
 }
 
+/** 用 AES-256-GCM 封装小数据（分片、头像、MFA 密钥等）。 */
 export function sealBuffer(plain: Buffer, key: Buffer = requireKey()): Buffer {
   const nonce = randomBytes(NONCE_BYTES);
   const cipher = createCipheriv('aes-256-gcm', key, nonce);
@@ -330,6 +338,7 @@ export function sealBuffer(plain: Buffer, key: Buffer = requireKey()): Buffer {
   return Buffer.concat([CHUNK_MAGIC, nonce, cipher.getAuthTag(), encrypted]);
 }
 
+/** 解封 VDCH1 小数据；不带 magic 的旧明文原样返回。 */
 export function openBuffer(payload: Buffer): Buffer {
   if (payload.length < CHUNK_MAGIC.length + NONCE_BYTES + TAG_BYTES) return payload;
   if (!payload.subarray(0, CHUNK_MAGIC.length).equals(CHUNK_MAGIC)) return payload;
@@ -349,15 +358,18 @@ export function openBuffer(payload: Buffer): Buffer {
   }
 }
 
+/** 把短文本加密成带 v1: 前缀的字符串，便于直接存数据库。 */
 export function sealText(text: string): string {
   return `v1:${sealBuffer(Buffer.from(text, 'utf8')).toString('base64')}`;
 }
 
+/** 解密 v1: 前缀文本；没有前缀的历史明文原样返回。 */
 export function openText(stored: string): string {
   if (!stored.startsWith('v1:')) return stored;
   return openBuffer(Buffer.from(stored.slice(3), 'base64')).toString('utf8');
 }
 
+/** 返回对象明文大小；未加密文件回退到文件 stat。 */
 export async function plaintextSizeOf(filePath: string): Promise<number> {
   const header = await readObjectHeader(filePath);
   if (header) return header.plainSize;
@@ -400,6 +412,7 @@ export async function decryptFileToPath(filePath: string, destination: string): 
   await pipeline(source, createWriteStream(destination));
 }
 
+/** 对明文内容计算 SHA-256，兼容加密对象与历史明文。 */
 export async function hashPlaintextFile(filePath: string): Promise<string> {
   const header = await readObjectHeader(filePath);
   const hash = createHash('sha256');

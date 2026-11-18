@@ -484,22 +484,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/bundles/{bundleId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["getBundle"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/bundles/{bundleId}/content": {
         parameters: {
             query?: never;
@@ -968,7 +952,6 @@ export interface components {
             status: "queued" | "building" | "ready" | "failed" | "expired";
             totalBytes: number;
             chunkedRanges: boolean;
-            statusUrl?: string;
         };
         TrashEntry: {
             /** Format: uuid */
@@ -2248,29 +2231,6 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
-        };
-    };
-    getBundle: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                bundleId: components["parameters"]["BundleId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 打包状态 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Bundle"];
-                };
-            };
-            404: components["responses"]["NotFound"];
         };
     };
     downloadBundle: {

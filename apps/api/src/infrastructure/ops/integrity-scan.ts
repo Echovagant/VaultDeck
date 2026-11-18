@@ -32,13 +32,9 @@ export interface IntegrityReport {
   ok: boolean;
 }
 
-let lastReport: IntegrityReport | null = null;
 let running = false;
 
-export function getLastIntegrityReport(): IntegrityReport | null {
-  return lastReport;
-}
-
+/** 递归列出目录下所有文件；目录不存在时返回空数组。 */
 async function walkFiles(dir: string): Promise<string[]> {
   const files: string[] = [];
   const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
@@ -50,6 +46,7 @@ async function walkFiles(dir: string): Promise<string[]> {
   return files;
 }
 
+/** 对账数据库对象与磁盘文件，返回缺失、损坏与孤儿文件报告。 */
 export async function runIntegrityScan(store: StorePort): Promise<IntegrityReport> {
   if (running) throw new Error('INTEGRITY_SCAN_RUNNING');
   running = true;
@@ -121,7 +118,6 @@ export async function runIntegrityScan(store: StorePort): Promise<IntegrityRepor
       chunkSessions: chunkEntries.filter((entry) => entry.isDirectory()).length,
       ok: issues.length === 0,
     };
-    lastReport = report;
     logger.info('integrity.scan.finish', {
       scannedObjects: report.scannedObjects,
       issues: issues.length,

@@ -21,6 +21,7 @@ export function base32Encode(data: Buffer): string {
   return output;
 }
 
+/** 解码 base32 密钥，忽略空格与末尾填充。 */
 export function base32Decode(input: string): Buffer {
   const normalized = input.toUpperCase().replace(/[\s=]/g, '');
   let bits = 0;
@@ -39,10 +40,12 @@ export function base32Decode(input: string): Buffer {
   return Buffer.from(output);
 }
 
+/** 生成 20 字节随机 TOTP 密钥，输出 base32 字符串。 */
 export function generateTotpSecret(bytes = 20): string {
   return base32Encode(randomBytes(bytes));
 }
 
+/** 按 RFC 6238 计算指定计数器的 6 位动态码。 */
 export function totpCode(secret: Buffer, counter: number, digits = DEFAULT_DIGITS): string {
   const buffer = Buffer.alloc(8);
   buffer.writeBigUInt64BE(BigInt(counter));
@@ -70,6 +73,7 @@ export function verifyTotp(secret: string, code: string, window = 1, now = Date.
   return false;
 }
 
+/** 生成验证器可识别的 otpauth:// 地址，供二维码展示。 */
 export function otpauthUrl(issuer: string, account: string, secret: string): string {
   const label = `${issuer}:${account}`;
   const params = new URLSearchParams({

@@ -3,10 +3,7 @@ import { createSHA256 } from 'hash-wasm';
 const BASE = '/api/v1';
 const FALLBACK_CHUNK_SIZE = 8 * 1024 * 1024;
 
-function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
-  return extra;
-}
-
+/** 分块计算文件 SHA-256，避免把大文件一次性读入内存。 */
 async function sha256Hex(
   file: File,
   onProgress?: (hashedBytes: number) => void,
@@ -22,6 +19,7 @@ async function sha256Hex(
   return hasher.digest('hex');
 }
 
+/** 计算分片 SHA-256 的 base64，用于 digest 请求头。 */
 async function sha256Base64(data: Uint8Array): Promise<string> {
   const hasher = await createSHA256();
   hasher.init();
@@ -58,10 +56,12 @@ interface MergeStatusResponse {
   detail?: string;
 }
 
+/** 对速率做指数平滑，避免进度数字剧烈跳动。 */
 function smooth(previous: number, current: number): number {
   return previous > 0 ? previous * 0.7 + current * 0.3 : current;
 }
 
+/** 轮询服务端合并状态，直到完成、失败或超时。 */
 async function waitForMerge(
   sessionId: string,
   totalBytes: number,
@@ -70,9 +70,7 @@ async function waitForMerge(
   const deadline = Date.now() + MERGE_TIMEOUT_MS;
   while (Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, MERGE_POLL_INTERVAL_MS));
-    const response = await fetch(`${BASE}/upload-sessions/${sessionId}`, {
-      headers: authHeaders(),
-    });
+    const response = await fetch(`${BASE}/upload-sessions/${sessionId}`);
     const payload = (await response.json()) as MergeStatusResponse;
     if (!response.ok) {
       throw new Error(payload.detail ?? '查询合并状态失败');
@@ -93,6 +91,7 @@ async function waitForMerge(
   throw new Error('服务端合并超时，请稍后在文件中确认');
 }
 
+/** 执行秒传预检、分片上传与服务端合并，并持续回报进度。 */
 export async function uploadFile(
   file: File,
   projectId: string,
@@ -130,7 +129,7 @@ export async function uploadFile(
 
   const precheckResponse = await fetch(`${BASE}/upload-sessions/precheck`, {
     method: 'POST',
-    headers: authHeaders({ 'content-type': 'application/json' }),
+    headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       projectId,
       folderId,
@@ -186,10 +185,10 @@ export async function uploadFile(
       `${BASE}/upload-sessions/${precheck.sessionId}/chunks/${index}`,
       {
         method: 'PUT',
-        headers: authHeaders({
+        headers: {
           'content-type': 'application/octet-stream',
           digest: `sha-256=${digest}`,
-        }),
+        },
         body: buffer,
       },
     );
@@ -234,10 +233,10 @@ export async function uploadFile(
   });
   const completeResponse = await fetch(`${BASE}/upload-sessions/${precheck.sessionId}/complete`, {
     method: 'POST',
-    headers: authHeaders({
+    headers: {
       'content-type': 'application/json',
       prefer: 'respond-async',
-    }),
+    },
     body: JSON.stringify({ sha256 }),
   });
 

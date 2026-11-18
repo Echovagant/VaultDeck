@@ -6,6 +6,7 @@ export interface ImportResult {
   message: string;
 }
 
+/** 以有限并发上传目录中的文件，返回每个文件的处理结果。 */
 export async function importDirectory(input: {
   files: File[];
   projectId: string;

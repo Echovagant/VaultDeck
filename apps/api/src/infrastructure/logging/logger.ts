@@ -35,6 +35,7 @@ function resolveMinLevel(): LogLevel {
 
 const MIN_LEVEL = resolveMinLevel();
 
+/** 输出单行 JSON 日志；敏感字段与超长字符串会先脱敏。 */
 export function log(
   level: LogLevel,
   event: string,
@@ -57,6 +58,7 @@ export const logger = {
   error: (event: string, fields?: Record<string, unknown>) => log('error', event, fields),
 };
 
+/** 把未知异常转成可读字符串，供日志与错误响应使用。 */
 export function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }

@@ -8,6 +8,7 @@ export interface OpenTab {
 
 const STORAGE_KEY = 'vd_open_tabs';
 
+/** 从 localStorage 恢复上次打开的项目标签。 */
 function loadTabs(): OpenTab[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -26,6 +27,7 @@ export const useTabsStore = defineStore('tabs', () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(tabs.value));
   }
 
+  /** 打开项目标签；已存在时只更新名称。 */
   function add(projectId: string, projectName: string): void {
     const existing = tabs.value.find((tab) => tab.projectId === projectId);
     if (existing) {

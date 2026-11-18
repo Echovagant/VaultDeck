@@ -11,6 +11,7 @@ import {
   type SessionUser,
 } from '@/api/client';
 
+/** 判断登录响应是 MFA 挑战，还是已经完成的会话。 */
 function isMfaChallenge(
   result: LoginResponse | MfaChallengeResponse,
 ): result is MfaChallengeResponse {
@@ -22,6 +23,7 @@ export const useSessionStore = defineStore('session', () => {
   const ready = ref(false);
   const avatarBlobUrl = ref('');
 
+  /** 把受保护的头像请求转成 blob URL；失败时保留空头像。 */
   async function loadAvatar(next: SessionUser | null): Promise<void> {
     if (avatarBlobUrl.value) URL.revokeObjectURL(avatarBlobUrl.value);
     avatarBlobUrl.value = '';
@@ -43,6 +45,7 @@ export const useSessionStore = defineStore('session', () => {
     await loadAvatar(next);
   }
 
+  /** 口令登录；需要 MFA 时返回挑战令牌，否则直接写入会话。 */
   async function login(username: string, password: string): Promise<MfaChallengeResponse | null> {
     const result = await api<LoginResponse | MfaChallengeResponse>('/auth/login', {
       method: 'POST',
@@ -62,6 +65,7 @@ export const useSessionStore = defineStore('session', () => {
     return null;
   }
 
+  /** 用挑战令牌和 6 位动态码完成第二步登录。 */
   async function verifyMfa(challengeToken: string, code: string): Promise<void> {
     const result = await api<LoginResponse>('/auth/mfa/verify', {
       method: 'POST',
@@ -96,6 +100,7 @@ export const useSessionStore = defineStore('session', () => {
     });
   }
 
+  /** 页面刷新后从 HttpOnly Cookie 恢复会话，失败视为未登录。 */
   async function restore(): Promise<void> {
     // 清理旧版本遗留的 localStorage token；会话已迁移到 HttpOnly Cookie
     localStorage.removeItem('vd_token');

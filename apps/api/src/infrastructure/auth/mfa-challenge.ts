@@ -25,6 +25,7 @@ export function createMfaChallenge(userId: string): { token: string; expiresInSe
   return { token: `${payload}.${signature}`, expiresInSeconds: CHALLENGE_TTL_MS / 1000 };
 }
 
+/** 校验挑战令牌的签名与过期时间，成功时返回 userId。 */
 export function verifyMfaChallenge(token: string): string | null {
   const parts = token.split('.');
   if (parts.length !== 2) return null;
