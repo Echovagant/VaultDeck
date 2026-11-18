@@ -54,7 +54,7 @@
 
 ## 快速开始
 
-### 离线包部署（推荐）
+### 离线包部署
 
 从 [Releases](https://github.com/Echovagant/VaultDeck/releases) 下载 `VaultDeck-v0.1.0-offline.zip`，解压到本机任意目录，在包根目录以管理员 PowerShell 执行：
 
