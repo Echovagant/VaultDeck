@@ -47,8 +47,9 @@ powershell -ExecutionPolicy Bypass -File setup.ps1
 ```
 
 - 默认部署目录为 `<发布包目录>\VaultDeck`，不存在时自动创建；需要换位置时加 `-TargetHome <部署目录>`。
-- 预计 3–8 分钟，控制台按 `[n/9]` 显示当前步骤与已用时间。
+- 预计 3–8 分钟，控制台按 `[n/10]` 显示当前步骤与已用时间。
 - 需要管理员权限：注册 `vaultdeck-api`、`vaultdeck-web` 与 PostgreSQL 三个 Windows 服务，添加两条本地子网防火墙规则，写机器级环境变量，收紧 `secrets`/`certs` 目录 ACL。
+- 全新 Windows 无需预装 Node、PostgreSQL、Nginx；第一步会预检 64 位系统、.NET Framework 4.8、防火墙服务与包内运行时，缺依赖会直接报错并说明原因。
 - 脚本不会重启电脑、不会删除部署目录以外的文件、不会把端口开放给公网。可随时 Ctrl+C 中断，重新执行会复用已生成的口令与密钥。
 - 只想先看它准备做什么：加 `-DryRun`，只打印计划，不做任何修改。
 - 端口或服务名被占用时，可用 `-HttpsPort`、`-HttpPort`、`-ApiPort`、`-ApiServiceName`、`-WebServiceName`、`-FirewallRulePrefix` 调整；同机可以并存第二套实例。

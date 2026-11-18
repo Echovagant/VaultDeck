@@ -55,7 +55,8 @@ powershell -ExecutionPolicy Bypass -File setup.ps1
 powershell -ExecutionPolicy Bypass -File setup.ps1 -TargetHome <部署目录>
 ```
 
-- **耗时**：通常 3–8 分钟，控制台按 `[n/9]` 输出步骤与已用时间；首次初始化 PostgreSQL 与等待服务启动占大部分时间。
+- **耗时**：通常 3–8 分钟，控制台按 `[n/10]` 输出步骤与已用时间；首次初始化 PostgreSQL 与等待服务启动占大部分时间。
+- **环境预检**：第一步检查 64 位 Windows 10 1809+/Windows 11、.NET Framework 4.8（WinSW 依赖）、Windows Firewall 服务是否运行，以及包内 PostgreSQL/Node/Nginx 能否启动；缺 Visual C++ 运行库等系统依赖会在修改任何文件前直接报错。
 - **管理员权限用途**：注册 `vaultdeck-api`、`vaultdeck-web` 与 PostgreSQL 服务，写两条 `LocalSubnet` 防火墙规则，写机器级环境变量，收紧 `secrets`/`certs` 的 ACL。除此之外不改系统设置。
 - **不会做的事**：不重启电脑、不删除部署目录以外的文件、不把端口开放给公网、不修改已有同名但指向其他数据目录的 PostgreSQL 服务（检测到会直接报错）。
 - **中断与重试**：可随时 Ctrl+C；重新执行同一命令会复用已生成的口令与密钥，不会重复初始化。

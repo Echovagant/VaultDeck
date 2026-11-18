@@ -83,7 +83,7 @@ if (-not $DryRun -and -not $isAdmin) {
 }
 
 $script:deployStart = Get-Date
-$script:totalSteps = 9
+$script:totalSteps = 10
 $script:currentStep = 0
 
 Write-Output '=============================================='
@@ -103,13 +103,14 @@ Write-Output ''
 
 if ($DryRun) {
   Write-Output 'DryRun：以下为计划，不会做任何修改。'
-  Write-Output ("  1. 解包 current/runtime/tools 到 " + $TargetHome + "，并在 releases\ 下保留版本快照")
-  Write-Output ("  2. 创建 data\pgdata、certs、secrets、logs 等目录，收紧 secrets/certs 的 ACL")
-  Write-Output ("  3. 初始化 PostgreSQL 数据目录，监听 127.0.0.1:" + $PgPort + "，注册服务 " + $PgServiceName)
-  Write-Output '  4. 生成数据库口令、secrets\encryption.key 与本机 TLS 证书'
-  Write-Output ("  5. 执行数据库迁移，空库时创建初始领队 leader（口令写入 secrets\initial-admin.txt）")
-  Write-Output ("  6. 注册/启动 " + $ApiServiceName + "、" + $WebServiceName + " 两个 Windows 服务")
-  Write-Output ("  7. 放行 TCP " + $HttpsPort + " 与 " + $HttpPort + "（仅 LocalSubnet），API 端口 " + $ApiPort)
+  Write-Output '  1. 环境预检：64 位 Windows、.NET Framework 4.8、防火墙服务、包内运行时能否启动'
+  Write-Output ("  2. 解包 current/runtime/tools 到 " + $TargetHome + "，并在 releases\ 下保留版本快照")
+  Write-Output ("  3. 创建 data\pgdata、certs、secrets、logs 等目录，收紧 secrets/certs 的 ACL")
+  Write-Output ("  4. 初始化 PostgreSQL 数据目录，监听 127.0.0.1:" + $PgPort + "，注册服务 " + $PgServiceName)
+  Write-Output '  5. 生成数据库口令、secrets\encryption.key 与本机 TLS 证书'
+  Write-Output ("  6. 执行数据库迁移，空库时创建初始领队 leader（口令写入 secrets\initial-admin.txt）")
+  Write-Output ("  7. 注册/启动 " + $ApiServiceName + "、" + $WebServiceName + " 两个 Windows 服务")
+  Write-Output ("  8. 放行 TCP " + $HttpsPort + " 与 " + $HttpPort + "（仅 LocalSubnet），API 端口 " + $ApiPort)
   Write-Output '  不重启电脑，不删除部署目录以外的文件。'
   Write-Output '确认后去掉 -DryRun 执行。'
   return
@@ -185,8 +186,53 @@ function Write-ServiceDefinition([string]$Source, [string]$Destination, [string]
   Set-Content -Path $Destination -Value $xml -Encoding UTF8
 }
 
+Write-Step '环境预检'
+if (-not [Environment]::Is64BitOperatingSystem) { throw 'VaultDeck 仅支持 64 位 Windows。' }
+$osInfo = Get-CimInstance Win32_OperatingSystem
+if ([int]$osInfo.BuildNumber -lt 17763) {
+  throw "仅支持 Windows 10 1809 / Windows 11 或更高版本（当前 Build $($osInfo.BuildNumber)）。"
+}
+$netRelease = 0
+try {
+  $netRelease = [int](Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full' -ErrorAction Stop).Release
+} catch {
+  $netRelease = 0
+}
+if ($netRelease -lt 528040) {
+  throw '未检测到 .NET Framework 4.8（WinSW 服务依赖）。请先安装 .NET Framework 4.8 后重试。'
+}
+if (-not $SkipFirewall) {
+  $firewallService = Get-Service MpsSvc -ErrorAction SilentlyContinue
+  if (-not $firewallService -or $firewallService.Status -ne 'Running') {
+    throw 'Windows Firewall 服务（MpsSvc）未运行，无法添加防火墙规则；请启动该服务，或加 -SkipFirewall。'
+  }
+}
+foreach ($probe in @(
+    @{ Name = 'PostgreSQL'; Exe = (Join-Path $PackageDir 'tools\postgresql\bin\postgres.exe'); Arg = '--version' },
+    @{ Name = 'Node'; Exe = (Join-Path $PackageDir 'runtime\node\node.exe'); Arg = '--version' },
+    @{ Name = 'Nginx'; Exe = (Join-Path $PackageDir 'tools\nginx\nginx.exe'); Arg = '-v' }
+  )) {
+  if (-not (Test-Path $probe.Exe)) { throw ("离线包缺少 " + $probe.Name + "：" + $probe.Exe) }
+  $probeExe = $probe.Exe
+  $probeArg = $probe.Arg
+  # Windows PowerShell 5.1 在 Stop 模式下会把 nginx -v 的 stderr 当成终止错误，
+  # 这里临时放宽为 Continue，只按退出码判断是否可用。
+  $previousEap = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
+  try {
+    $probeOutput = & $probeExe $probeArg 2>&1
+    $probeExit = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $previousEap
+  }
+  if ($probeExit -ne 0) {
+    throw ($probe.Name + ' 无法启动（退出码 ' + $probeExit + '）。全新 Windows 常见原因是缺少 Visual C++ 运行库，请安装 Microsoft Visual C++ 2015-2022 Redistributable (x64) 后重试。输出：' + ($probeOutput -join ' '))
+  }
+  Write-Output ('  ' + $probe.Name + ': ' + ($probeOutput -join ' '))
+}
+
 Write-Step '解包到目标目录'
-& (Join-Path $PackageDir 'install.ps1') -TargetHome $TargetHome
+& (Join-Path $PackageDir 'install.ps1') -TargetHome $TargetHome -SkipAdminNotes
 # install.ps1 内部使用 robocopy；其退出码 1 表示已复制文件，属成功，不能据此判失败。
 
 $secretsDir = Join-Path $TargetHome 'secrets'

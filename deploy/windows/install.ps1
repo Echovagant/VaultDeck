@@ -1,8 +1,10 @@
 # VaultDeck offline package installer (non-admin part).
 # Usage: powershell -ExecutionPolicy Bypass -File install.ps1 -TargetHome <VAULTDECK_HOME>
-# Admin steps (service registration, firewall, machine cert, machine env vars) are printed at the end.
+# Admin steps (service registration, firewall, machine cert, machine env vars) are printed at the end
+# unless -SkipAdminNotes is set (setup.ps1 handles them itself).
 param(
-  [Parameter(Mandatory = $true)][string]$TargetHome
+  [Parameter(Mandatory = $true)][string]$TargetHome,
+  [switch]$SkipAdminNotes
 )
 
 $ErrorActionPreference = 'Stop'
@@ -47,21 +49,23 @@ foreach ($svc in @('vaultdeck-api', 'vaultdeck-web')) {
 Set-Content -Path (Join-Path $TargetHome 'current.txt') -Value $version
 Write-Output "current.txt -> $version"
 
-Write-Output ''
-Write-Output '=== ADMIN STEPS (run an elevated PowerShell) ==='
-Write-Output '1) machine env vars:'
-Write-Output ('     setx /M VAULTDECK_HOME "' + $TargetHome + '"')
-Write-Output '     setx /M VAULTDECK_DB_URL "<connection string, local only>"'
-Write-Output '2) migrations (elevated shell with VAULTDECK_DB_URL set):'
-Write-Output ('     set VD_MIGRATIONS_DIR=' + $TargetHome + '\current\migrations')
-Write-Output ('     "' + $TargetHome + '\runtime\node\node.exe" "' + $TargetHome + '\current\api\infrastructure\db\migrate-cli.js"')
-Write-Output '3) register services (per-service WinSW wrapper under %VAULTDECK_HOME%\tools\winsw):'
-Write-Output ('     "' + $TargetHome + '\tools\winsw\vaultdeck-api.exe" install')
-Write-Output ('     "' + $TargetHome + '\tools\winsw\vaultdeck-web.exe" install')
-Write-Output '4) firewall (8443/TCP only):'
-Write-Output '     New-NetFirewallRule -DisplayName "VaultDeck HTTPS" -Direction Inbound -Protocol TCP -LocalPort 8443 -Action Allow'
-Write-Output '5) optional: import certs\ca.crt into machine Trusted Root store'
-Write-Output '6) start: net start vaultdeck-api ; net start vaultdeck-web'
-Write-Output '7) smoke: https://<host>:8443/  and  /api/v1/system/health'
-Write-Output ''
+if (-not $SkipAdminNotes) {
+  Write-Output ''
+  Write-Output '=== ADMIN STEPS (run an elevated PowerShell) ==='
+  Write-Output '1) machine env vars:'
+  Write-Output ('     setx /M VAULTDECK_HOME "' + $TargetHome + '"')
+  Write-Output '     setx /M VAULTDECK_DB_URL "<connection string, local only>"'
+  Write-Output '2) migrations (elevated shell with VAULTDECK_DB_URL set):'
+  Write-Output ('     set VD_MIGRATIONS_DIR=' + $TargetHome + '\current\migrations')
+  Write-Output ('     "' + $TargetHome + '\runtime\node\node.exe" "' + $TargetHome + '\current\api\infrastructure\db\migrate-cli.js"')
+  Write-Output '3) register services (per-service WinSW wrapper under %VAULTDECK_HOME%\tools\winsw):'
+  Write-Output ('     "' + $TargetHome + '\tools\winsw\vaultdeck-api.exe" install')
+  Write-Output ('     "' + $TargetHome + '\tools\winsw\vaultdeck-web.exe" install')
+  Write-Output '4) firewall (8443/TCP only):'
+  Write-Output '     New-NetFirewallRule -DisplayName "VaultDeck HTTPS" -Direction Inbound -Protocol TCP -LocalPort 8443 -Action Allow'
+  Write-Output '5) optional: import certs\ca.crt into machine Trusted Root store'
+  Write-Output '6) start: net start vaultdeck-api ; net start vaultdeck-web'
+  Write-Output '7) smoke: https://<host>:8443/  and  /api/v1/system/health'
+  Write-Output ''
+}
 Write-Output 'install done (non-admin part).'
