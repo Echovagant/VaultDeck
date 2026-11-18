@@ -70,6 +70,9 @@ powershell -ExecutionPolicy Bypass -File setup.ps1 -TargetHome <部署目录>
 - `-PgPort 55432`：内置 PostgreSQL 端口，默认避开系统已占用的 5432。
 - `-PgServiceName VaultDeckPostgres`：PostgreSQL 的 Windows 服务名；已有同名服务时复用。
 - `-HttpsPort 8443 -HttpPort 80`：对外端口。
+- `-ApiPort 3000`：后端本机监听端口，同时写入 API 服务定义与 Nginx 反代；被占用时改这里，不要只改 Nginx。
+- `-ApiServiceName` / `-WebServiceName`：WinSW 服务名，默认 `vaultdeck-api` / `vaultdeck-web`；同机部署第二套实例时改。
+- `-FirewallRulePrefix`：防火墙规则名前缀，默认 `VaultDeck`；同名规则端口不一致时脚本会报错而不是静默跳过。
 - `-ServerDns <name> -ServerIp <ip>`：追加证书 SAN，便于局域网 IP 访问。
 - `-RequireClientCert -ClientName <name>`：启用双向 TLS。
 - `-SkipFirewall -SkipServices -SkipMachineEnv -SkipPgService`：只做准备，不碰对应系统项。

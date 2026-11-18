@@ -2,7 +2,9 @@
 # Usage (elevated recommended): powershell -ExecutionPolicy Bypass -File upgrade.ps1 -TargetHome <home> -PackageDir <new package>
 param(
   [Parameter(Mandatory = $true)][string]$TargetHome,
-  [Parameter(Mandatory = $true)][string]$PackageDir
+  [Parameter(Mandatory = $true)][string]$PackageDir,
+  [string]$ApiServiceName = 'vaultdeck-api',
+  [string]$WebServiceName = 'vaultdeck-web'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -26,15 +28,21 @@ Copy-Into (Join-Path $PackageDir 'current') (Join-Path $TargetHome 'current')
 Copy-Into (Join-Path $PackageDir 'runtime') (Join-Path $TargetHome 'runtime')
 Copy-Into (Join-Path $PackageDir 'tools') (Join-Path $TargetHome 'tools')
 # refresh WinSW per-service configs (executables stay in tools\winsw)
-foreach ($svc in @('vaultdeck-api', 'vaultdeck-web')) {
-  Copy-Item (Join-Path $TargetHome ("current\" + $svc + '.xml')) (Join-Path $TargetHome ("tools\winsw\" + $svc + '.xml')) -Force
+$serviceDefs = @(
+  @{ Id = $ApiServiceName; Source = 'vaultdeck-api.xml' },
+  @{ Id = $WebServiceName; Source = 'vaultdeck-web.xml' }
+)
+foreach ($def in $serviceDefs) {
+  $xml = Get-Content (Join-Path $TargetHome ('current\' + $def.Source)) -Raw
+  $xml = $xml -replace '<id>[^<]*</id>', ('<id>' + $def.Id + '</id>')
+  Set-Content -Path (Join-Path $TargetHome ('tools\winsw\' + $def.Id + '.xml')) -Value $xml -Encoding UTF8
 }
 Set-Content -Path (Join-Path $TargetHome 'current.txt') -Value $version
 
 Write-Output 'restarting services...'
-net stop vaultdeck-api 2>$null | Out-Null
-net stop vaultdeck-web 2>$null | Out-Null
-net start vaultdeck-web | Out-Null
-net start vaultdeck-api | Out-Null
+net stop $ApiServiceName 2>$null | Out-Null
+net stop $WebServiceName 2>$null | Out-Null
+net start $WebServiceName | Out-Null
+net start $ApiServiceName | Out-Null
 Write-Output "upgrade done: current.txt -> $version"
 Write-Output 'smoke: /api/v1/system/health and web page'

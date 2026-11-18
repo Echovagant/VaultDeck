@@ -5,7 +5,8 @@
 # 默认：PackageDir = 脚本所在目录，TargetHome = <PackageDir>\VaultDeck（不存在时自动创建）。
 # 可选：
 #   -TargetHome <部署目录> -DryRun   指定部署目录 / 只打印计划不做修改
-#   -PgPort 55432 -HttpsPort 8443 -HttpPort 80
+#   -PgPort 55432 -HttpsPort 8443 -HttpPort 80 -ApiPort 3000
+#   -ApiServiceName vaultdeck-api -WebServiceName vaultdeck-web -FirewallRulePrefix VaultDeck
 #   -RequireClientCert -ClientName phone
 #   -ServerDns vaultdeck.local -ServerIp <LAN_IP>
 #   -SkipFirewall -SkipServices -SkipMachineEnv -SkipPgService
@@ -17,6 +18,10 @@ param(
   [string]$PgServiceName = 'VaultDeckPostgres',
   [int]$HttpsPort = 8443,
   [int]$HttpPort = 80,
+  [int]$ApiPort = 3000,
+  [string]$ApiServiceName = 'vaultdeck-api',
+  [string]$WebServiceName = 'vaultdeck-web',
+  [string]$FirewallRulePrefix = 'VaultDeck',
   [switch]$RequireClientCert,
   [string]$ClientName = '',
   [string]$ServerDns = '',
@@ -38,6 +43,11 @@ if (-not (Test-Path (Join-Path $PackageDir 'VERSION'))) {
 
 if (-not $TargetHome) { $TargetHome = Join-Path $PackageDir 'VaultDeck' }
 $TargetHome = [IO.Path]::GetFullPath($TargetHome).TrimEnd('\')
+
+foreach ($serviceName in @($ApiServiceName, $WebServiceName, $PgServiceName)) {
+  if ($serviceName -notmatch '^[A-Za-z0-9._-]+$') { throw "服务名只能包含字母、数字、点、下划线与短横线：$serviceName" }
+}
+if ($ApiServiceName -eq $WebServiceName) { throw 'ApiServiceName 与 WebServiceName 不能相同' }
 
 # ---- 路径护栏：只允许写到明确的部署目录，避免误伤系统目录或覆盖用户文件夹 ----
 if ($TargetHome -eq $PackageDir) {
@@ -98,8 +108,8 @@ if ($DryRun) {
   Write-Output ("  3. 初始化 PostgreSQL 数据目录，监听 127.0.0.1:" + $PgPort + "，注册服务 " + $PgServiceName)
   Write-Output '  4. 生成数据库口令、secrets\encryption.key 与本机 TLS 证书'
   Write-Output ("  5. 执行数据库迁移，空库时创建初始领队 leader（口令写入 secrets\initial-admin.txt）")
-  Write-Output '  6. 注册/启动 vaultdeck-api、vaultdeck-web 两个 Windows 服务'
-  Write-Output ("  7. 放行 TCP " + $HttpsPort + " 与 " + $HttpPort + "（仅 LocalSubnet）")
+  Write-Output ("  6. 注册/启动 " + $ApiServiceName + "、" + $WebServiceName + " 两个 Windows 服务")
+  Write-Output ("  7. 放行 TCP " + $HttpsPort + " 与 " + $HttpPort + "（仅 LocalSubnet），API 端口 " + $ApiPort)
   Write-Output '  不重启电脑，不删除部署目录以外的文件。'
   Write-Output '确认后去掉 -DryRun 执行。'
   return
@@ -158,9 +168,21 @@ function Start-Postgres([string]$PgCtl, [string]$PgData, [string]$LogFile, [stri
 
 function Ensure-FirewallRule([string]$Name, [int]$Port) {
   $existing = Get-NetFirewallRule -DisplayName $Name -ErrorAction SilentlyContinue
-  if ($existing) { return }
+  if ($existing) {
+    $existingPorts = @((Get-NetFirewallPortFilter -AssociatedNetFirewallRule $existing).LocalPort)
+    if ($existingPorts -contains [string]$Port) { return }
+    throw "已存在同名防火墙规则 $Name 但端口不同（当前：$($existingPorts -join ',')，期望：$Port）。请先删除该规则，或用 -FirewallRulePrefix 换一个前缀。"
+  }
   New-NetFirewallRule -DisplayName $Name -Direction Inbound -Protocol TCP -LocalPort $Port `
     -Action Allow -RemoteAddress LocalSubnet | Out-Null
+}
+
+function Write-ServiceDefinition([string]$Source, [string]$Destination, [string]$ServiceName) {
+  $xml = Get-Content $Source -Raw
+  $xml = $xml -replace '<id>[^<]*</id>', "<id>$ServiceName</id>"
+  $xml = $xml.Replace('<env name="PORT" value="3000" />',
+    ('<env name="PORT" value="' + $ApiPort + '" />'))
+  Set-Content -Path $Destination -Value $xml -Encoding UTF8
 }
 
 Write-Step '解包到目标目录'
@@ -312,6 +334,7 @@ $content = Get-Content $nginxConf -Raw
 $content = $content.Replace('listen 80;', "listen $HttpPort;")
 $content = $content.Replace('listen 8443 ssl;', "listen $HttpsPort ssl;")
 $content = $content.Replace('https://$host:8443', ('https://$host:' + $HttpsPort))
+$content = $content.Replace('proxy_pass http://127.0.0.1:3000;', "proxy_pass http://127.0.0.1:$ApiPort;")
 if ($RequireClientCert) {
   if (-not (Test-Path (Join-Path $nginxCerts 'client-ca.crt'))) {
     throw '启用客户端证书需要 certs/client-ca.crt'
@@ -365,12 +388,14 @@ if ($bootstrap.created) {
 Write-Step '注册并启动服务'
 $apiXmlSource = Join-Path $TargetHome 'current\vaultdeck-api.xml'
 $webXmlSource = Join-Path $TargetHome 'current\vaultdeck-web.xml'
-Copy-Item $apiXmlSource (Join-Path $TargetHome 'tools\winsw\vaultdeck-api.xml') -Force
-Copy-Item $webXmlSource (Join-Path $TargetHome 'tools\winsw\vaultdeck-web.xml') -Force
+Write-ServiceDefinition $apiXmlSource (Join-Path $TargetHome ("tools\winsw\" + $ApiServiceName + '.xml')) $ApiServiceName
+Write-ServiceDefinition $webXmlSource (Join-Path $TargetHome ("tools\winsw\" + $WebServiceName + '.xml')) $WebServiceName
+$serviceNames = @($ApiServiceName, $WebServiceName)
 
 if (-not $SkipServices) {
-  foreach ($svc in @('vaultdeck-api', 'vaultdeck-web')) {
+  foreach ($svc in $serviceNames) {
     $wrapper = Join-Path $TargetHome ("tools\winsw\$svc.exe")
+    Copy-Item (Join-Path $TargetHome 'tools\winsw\WinSW.NET461.exe') $wrapper -Force
     if (-not (Get-Service $svc -ErrorAction SilentlyContinue)) {
       & $wrapper install
       if ($LASTEXITCODE -ne 0) { throw "注册服务失败：$svc" }
@@ -387,15 +412,15 @@ try {
 }
 
 if (-not $SkipServices) {
-  foreach ($svc in @('vaultdeck-api', 'vaultdeck-web')) {
+  foreach ($svc in $serviceNames) {
     $service = Get-Service $svc
     if ($service.Status -eq 'Running') { Restart-Service $svc -Force } else { Start-Service $svc }
   }
 }
 
 if (-not $SkipFirewall) {
-  Ensure-FirewallRule 'VaultDeck HTTPS' $HttpsPort
-  Ensure-FirewallRule 'VaultDeck HTTP' $HttpPort
+  Ensure-FirewallRule ($FirewallRulePrefix + ' HTTPS') $HttpsPort
+  Ensure-FirewallRule ($FirewallRulePrefix + ' HTTP') $HttpPort
 }
 
 Write-Step '冒烟检查'
@@ -406,13 +431,13 @@ if ($SkipServices) {
   $deadline = (Get-Date).AddSeconds(120)
   while ((Get-Date) -lt $deadline) {
     try {
-      $response = Invoke-WebRequest -Uri 'http://127.0.0.1:3000/api/v1/system/health' -UseBasicParsing -TimeoutSec 5
+      $response = Invoke-WebRequest -Uri ("http://127.0.0.1:" + $ApiPort + '/api/v1/system/health') -UseBasicParsing -TimeoutSec 5
       if ($response.StatusCode -eq 200) { $healthy = $true; break }
     } catch {
       Start-Sleep -Seconds 2
     }
   }
-  if (-not $healthy) { throw 'API 健康检查超时，请查看 logs\vaultdeck-api.*.log' }
+  if (-not $healthy) { throw ("API 健康检查超时，请查看 logs\" + $ApiServiceName + ".out.log") }
 
   $httpsCode = & curl.exe -k -s -o NUL -w "%{http_code}" ("https://localhost:" + $HttpsPort + "/api/v1/system/health")
   if ($httpsCode -ne '200') { throw "HTTPS 健康检查失败：HTTP $httpsCode" }
@@ -439,9 +464,9 @@ Write-Output '本次脚本没有重启电脑，也没有删除部署目录以外
 if ($SkipServices) {
   Write-Output '（已跳过服务注册，开机自启未配置。）'
 } else {
-  $serviceNames = 'vaultdeck-api,vaultdeck-web'
-  if (-not $SkipPgService) { $serviceNames = $PgServiceName + ',' + $serviceNames }
+  $autostartNames = $ApiServiceName + ',' + $WebServiceName
+  if (-not $SkipPgService) { $autostartNames = $PgServiceName + ',' + $autostartNames }
   Write-Output '开机自启验证（不需要重启机器）：'
-  Write-Output ('  Get-Service ' + $serviceNames + ' | Format-Table Name,Status,StartType')
+  Write-Output ('  Get-Service ' + $autostartNames + ' | Format-Table Name,Status,StartType')
   Write-Output '  StartType 为 Automatic 即表示随 Windows 启动；实际重启验证请在方便时自行安排。'
 }

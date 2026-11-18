@@ -51,6 +51,7 @@ powershell -ExecutionPolicy Bypass -File setup.ps1
 - 需要管理员权限：注册 `vaultdeck-api`、`vaultdeck-web` 与 PostgreSQL 三个 Windows 服务，添加两条本地子网防火墙规则，写机器级环境变量，收紧 `secrets`/`certs` 目录 ACL。
 - 脚本不会重启电脑、不会删除部署目录以外的文件、不会把端口开放给公网。可随时 Ctrl+C 中断，重新执行会复用已生成的口令与密钥。
 - 只想先看它准备做什么：加 `-DryRun`，只打印计划，不做任何修改。
+- 端口或服务名被占用时，可用 `-HttpsPort`、`-HttpPort`、`-ApiPort`、`-ApiServiceName`、`-WebServiceName`、`-FirewallRulePrefix` 调整；同机可以并存第二套实例。
 
 脚本会初始化内置 PostgreSQL、生成数据库口令与加密密钥、生成本机 TLS 证书、执行迁移、创建初始领队 `leader`（口令写入 `secrets\initial-admin.txt`）、注册服务并做冒烟检查。数据库口令、加密密钥、证书都在部署目录内自动生成，不依赖固定盘符，也不需要预先创建目录；详细参数见 `docs/ops/deployment.md`。
 
