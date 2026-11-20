@@ -19,7 +19,7 @@
     toggle.addEventListener('click', function () {
       var next = root.dataset.theme === 'dark' ? 'light' : 'dark';
       root.dataset.theme = next;
-      try { localStorage.setItem('vd-theme', next); } catch (e) { /* 隐私模式下存不了就算了 */ }
+      try { localStorage.setItem('vd-theme', next); } catch { /* 隐私模式下存不了就算了 */ }
       paintToggle();
     });
   }
