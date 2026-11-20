@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VaultDeck · 局域网内的团队资料库</title>
+<meta name="description" content="VaultDeck 是跑在自己 Windows 主机上的团队资料管理系统：按项目归档、大文件断点续传、浏览器直接预览、三级权限与操作审计。数据不出局域网，MIT 开源。">
+<meta property="og:title" content="VaultDeck · 局域网内的团队资料库">
+<meta property="og:description" content="一台 Windows 主机就能跑的团队资料库。按项目归档、断点续传、浏览器直接预览，资料不出局域网。">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://echovagant.github.io/VaultDeck/assets/shots/files-grid.png">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<script>
+  // 主题初始化：跟随系统，手动选择存 localStorage。放 head 里避免闪烁。
+  (function () {
+    var saved = null;
+    try { saved = localStorage.getItem('vd-theme'); } catch (e) {}
+    var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    document.documentElement.dataset.theme = saved || (prefersDark ? 'dark' : 'light');
+    document.documentElement.classList.add('js');
+  })();
+</script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<a class="skip-link" href="#main">跳到主要内容</a>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="#top">
+      <span class="brand-mark" aria-hidden="true">V</span>
+      <span class="brand-word">VaultDeck<small>ARCHIVE DESK</small></span>
+    </a>
+    <nav class="nav-links" aria-label="页面导航">
+      <a href="#features">功能</a>
+      <a href="#screens">界面</a>
+      <a href="#data">数据边界</a>
+      <a href="#deploy">部署</a>
+      <a href="#download">下载</a>
+    </nav>
+    <div class="nav-actions">
+      <a class="nav-github" href="https://github.com/Echovagant/VaultDeck" target="_blank" rel="noopener">GitHub</a>
+      <button class="theme-toggle" id="themeToggle" type="button">深色</button>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+
+  <!-- 首屏：整页唯一的深色块，对应产品登录页的左右分栏 -->
+  <section class="hero" id="top">
+    <div class="hero-inner">
+      <div class="hero-copy">
+        <p class="hero-eyebrow">局域网自托管 · MIT 开源</p>
+        <h1 class="hero-title">把团队的<br><em>每一份资料</em><br>收进同一个档案库</h1>
+        <p class="hero-sub">VaultDeck 跑在你自己的 Windows 主机上：按项目归档、大文件断点续传、浏览器直接预览，资料不出局域网。</p>
+        <div class="hero-cta">
+          <a class="btn btn-solid" href="#download">下载离线包</a>
+          <a class="btn btn-ghost" href="https://github.com/Echovagant/VaultDeck" target="_blank" rel="noopener">在 GitHub 看源码</a>
+        </div>
+      </div>
+      <figure class="hero-shot reveal">
+        <img src="assets/shots/files-grid.png" alt="VaultDeck 文件网格视图：左侧炭黑导航栏，右侧米白纸面上的文件卡片" width="1440" height="900" fetchpriority="high">
+        <figcaption>登录之后，就是这张档案桌。</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <!-- 功能：三组清单，不用卡片 -->
+  <section class="section" id="features">
+    <div class="section-inner">
+      <header class="section-head">
+        <h2>能干什么</h2>
+        <p>一台主机装完，全队浏览器里用。按项目归档、大文件传输、在线预览、权限与台账，都在这一套里。</p>
+      </header>
+      <div class="feature-groups">
+        <div class="feature-group reveal">
+          <h3><span class="fg-num">A</span>归档与查找</h3>
+          <ul>
+            <li>按项目建库，文件夹树随意分层</li>
+            <li>网格、列表两种视图，按类型筛选</li>
+            <li>文件名搜索，分类归类</li>
+          </ul>
+        </div>
+        <div class="feature-group reveal">
+          <h3><span class="fg-num">B</span>传输与预览</h3>
+          <ul>
+            <li>8 MB 分片上传，断了接着传</li>
+            <li>相同内容只存一份，秒传不重复占用</li>
+            <li>ZIP 打包下载，大文件支持断点下载</li>
+            <li>PDF、图片、文本、docx、xlsx 在浏览器里直接看，pptx 可选转换后预览</li>
+          </ul>
+        </div>
+        <div class="feature-group reveal">
+          <h3><span class="fg-num">C</span>权限与台账</h3>
+          <ul>
+            <li>领队、执行领队、队员三级角色，项目之间互相隔离</li>
+            <li>账号不开放注册，由领队创建与停用，支持 TOTP 双重验证</li>
+            <li>登录、上传、下载、删除全部记入操作日志，只增不改</li>
+            <li>按项目统计文件数与容量，可导出 CSV</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 界面：错落截图墙，说明文字在图下方 -->
+  <section class="section section-alt" id="screens">
+    <div class="section-inner">
+      <header class="section-head">
+        <h2>它长这样</h2>
+        <p>米白纸面、衬线标题、等宽小字。下面全是真实界面截图，没有修饰。</p>
+      </header>
+      <div class="shots-grid">
+        <figure class="shot span-4 reveal">
+          <img src="assets/shots/files-grid.png" alt="文件网格视图" loading="lazy" width="1440" height="900">
+          <figcaption>文件网格视图，按项目归档</figcaption>
+        </figure>
+        <figure class="shot span-2 reveal">
+          <img src="assets/shots/file-preview.png" alt="xlsx 文件在浏览器内渲染预览" loading="lazy" width="1440" height="900">
+          <figcaption>xlsx 在浏览器里直接渲染</figcaption>
+        </figure>
+        <figure class="shot span-2 reveal">
+          <img src="assets/shots/search.png" alt="文件名搜索结果" loading="lazy" width="1440" height="900">
+          <figcaption>文件名搜索</figcaption>
+        </figure>
+        <figure class="shot span-4 reveal">
+          <img src="assets/shots/projects.png" alt="项目列表与容量总览" loading="lazy" width="1440" height="900">
+          <figcaption>项目与容量总览</figcaption>
+        </figure>
+        <figure class="shot span-3 reveal">
+          <img src="assets/shots/audit.png" alt="操作日志页面" loading="lazy" width="1440" height="900">
+          <figcaption>操作日志，只增不改</figcaption>
+        </figure>
+        <figure class="shot span-3 reveal">
+          <img src="assets/shots/member-files.png" alt="队员视角的文件列表" loading="lazy" width="1440" height="900">
+          <figcaption>队员视角，只见授权项目</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <!-- 数据边界：两栏台账，面向不关心技术的人 -->
+  <section class="section" id="data">
+    <div class="section-inner">
+      <header class="section-head">
+        <h2>数据在哪里，不会去哪里</h2>
+        <p>这一节说清楚数据的事，一条条列，不玩概念。</p>
+      </header>
+      <div class="ledger">
+        <div class="ledger-col reveal">
+          <h3>数据在哪里</h3>
+          <ul>
+            <li><strong>你的主机。</strong>文件与数据库都在部署目录里，始终只在你这台机器上。</li>
+            <li><strong>局域网。</strong>同事用浏览器访问内网地址，传输走 HTTPS/TLS。</li>
+            <li><strong>加密存放。</strong>文件对象用 AES-256-GCM 应用层加密，密钥在你手里。</li>
+          </ul>
+        </div>
+        <div class="ledger-col reveal">
+          <h3>不会发生什么</h3>
+          <ul>
+            <li><strong>没有云同步。</strong>不存在另一台服务器替你保管副本，也就没有副本外泄这回事。</li>
+            <li><strong>没有统计脚本。</strong>系统里没有第三方统计、埋点或遥测组件。</li>
+            <li><strong>没有开放注册。</strong>账号只能由领队创建、停用，人走号收。</li>
+          </ul>
+        </div>
+      </div>
+      <p class="ledger-note">上传下载都发生在浏览器与你自己的主机之间。完整的加密与边界说明见 <a href="https://github.com/Echovagant/VaultDeck#安全与数据边界" target="_blank" rel="noopener">README 安全小节</a>。</p>
+    </div>
+  </section>
+
+  <!-- 部署：两种人，各一句话 -->
+  <section class="section section-alt" id="deploy">
+    <div class="section-inner">
+      <header class="section-head">
+        <h2>装一次，全队用</h2>
+        <p>部署是布置机房的人干一次的事；用的人只需要一个浏览器。</p>
+      </header>
+      <div class="deploy-cols">
+        <div class="deploy-col reveal">
+          <h3>部署的人，干一次</h3>
+          <ol class="steps">
+            <li><span class="step-verb">下载</span>离线包，Releases 页一个 zip</li>
+            <li><span class="step-verb">解压</span>到任意目录</li>
+            <li><span class="step-verb">运行</span>管理员 PowerShell 执行安装脚本</li>
+          </ol>
+          <p class="deploy-note">约 3 至 8 分钟，不重启电脑，不动部署目录以外的文件。装完是 Windows 服务，开机自启。参数与前置条件见<a href="https://github.com/Echovagant/VaultDeck/blob/main/docs/ops/deployment.md" target="_blank" rel="noopener">部署手册</a>。</p>
+        </div>
+        <div class="deploy-col reveal">
+          <h3>用的人，天天用</h3>
+          <p class="deploy-big">浏览器打开内网地址，输入领队发的账号密码，就能传文件、看预览、翻台账。</p>
+          <p class="deploy-note">手机浏览器一样可以用。没有客户端要装，没有插件要配。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 性能：README 实测表，原样搬运 -->
+  <section class="section" id="perf">
+    <div class="section-inner">
+      <header class="section-head">
+        <h2>实测传输速度</h2>
+        <p>同一套代码在不同硬件上差异较大。以下为参考环境实测值，仅作量级参考，请以目标机器实测为准。</p>
+      </header>
+      <div class="perf-table reveal">
+        <table>
+          <thead>
+            <tr><th scope="col">磁盘</th><th scope="col">数据量</th><th scope="col">上传</th><th scope="col">下载</th><th scope="col">备份</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>内置盘（NVMe SSD）</td><td>20 × 1 GB，10 并发</td><td>204.5 MB/s</td><td>526.9 MB/s</td><td>266.2 MB/s</td></tr>
+            <tr><td>外置盘（USB）</td><td>1 GB，单文件</td><td>23.0 MB/s</td><td>187.3 MB/s</td><td>38.4 MB/s</td></tr>
+            <tr><td>外置盘（USB）</td><td>10 × 10 GB，10 并发</td><td>22.8 MB/s</td><td>未测</td><td>未测</td></tr>
+            <tr><td>外置盘（USB）</td><td>20 GB，单文件</td><td>30.6 MB/s</td><td>未测</td><td>未测</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- 已知限制：把丑话说在前面 -->
+  <section class="section section-alt" id="limits">
+    <div class="section-inner">
+      <header class="section-head">
+        <h2>把丑话说在前面</h2>
+        <p>这四条请部署的人读完再决定。</p>
+      </header>
+      <div class="limits-list">
+        <div class="limit reveal">
+          <h3>它不是备份系统</h3>
+          <p>删掉并清空回收站、磁盘或整机损坏、加密密钥丢失，这些情况资料都找不回来。VaultDeck 不能当作资料的唯一副本，请另做备份。</p>
+        </div>
+        <div class="limit reveal">
+          <h3>密钥丢了就是丢了</h3>
+          <p>文件用 AES-256-GCM 加密，密钥在你手里，也意味着丢了没人能帮你。密钥必须与备份分开、离线保存。</p>
+        </div>
+        <div class="limit reveal">
+          <h3>元数据没做应用层加密</h3>
+          <p>数据库里的文件名、大小等结构化信息依赖 BitLocker 与目录权限保护，请给部署目录上锁。</p>
+        </div>
+        <div class="limit reveal">
+          <h3>别把它挂到公网</h3>
+          <p>它按局域网设计。暴露公网、弱口令、转交管理员权限带来的风险，由部署者承担。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 下载 -->
+  <section class="section" id="download">
+    <div class="section-inner download-inner">
+      <div class="download-copy">
+        <h2>一个 zip，装完即用</h2>
+        <p>面向 Windows 10 / 11 的离线安装包，自带运行时与 Nginx，装的过程不需要联网拉依赖。</p>
+        <div class="download-links">
+          <a class="btn btn-solid" href="https://github.com/Echovagant/VaultDeck/releases/download/v0.1.0/VaultDeck-v0.1.0-offline.zip">从 Releases 下载</a>
+          <a class="btn btn-ghost" href="https://github.com/Echovagant/VaultDeck/releases/tag/v0.1.0">查看 Release 页</a>
+        </div>
+      </div>
+      <div class="download-card reveal">
+        <p class="dc-name">VaultDeck-v0.1.0-offline.zip</p>
+        <p class="dc-size">108,107,484 字节（约 103 MB）</p>
+        <p class="dc-sha">SHA-256<br><code>62eb81cb5ef466917210261316560bbb776ba5b85250d7eda2163ec785f115d3</code></p>
+        <p class="dc-note">安装前后都可以用这条哈希核对包没被改过。</p>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  <div class="footer-inner">
+    <p class="footer-brand">VAULTDECK · LOCAL ARCHIVE</p>
+    <p class="footer-line">数据不出你的局域网。</p>
+    <nav class="footer-links" aria-label="页脚链接">
+      <a href="https://github.com/Echovagant/VaultDeck" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/Echovagant/VaultDeck/releases" target="_blank" rel="noopener">Releases</a>
+      <a href="https://github.com/Echovagant/VaultDeck/blob/main/docs/ops/deployment.md" target="_blank" rel="noopener">部署手册</a>
+      <a href="https://github.com/Echovagant/VaultDeck/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
+    </nav>
+  </div>
+</footer>
+
+<script src="script.js" defer></script>
+</body>
+</html>
