@@ -15,9 +15,11 @@ jobs:
           node-version: '24'
           cache: 'npm'
       - run: npm ci
+      - run: npm run build --workspace @vaultdeck/llm
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run test --workspace @vaultdeck/llm
+      - run: npm run test --workspace @vaultdeck/api
       - run: npm run contract:lint
       - run: npm run contract:check
       - run: npm run check:sanitize

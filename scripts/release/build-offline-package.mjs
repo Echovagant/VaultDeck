@@ -175,8 +175,10 @@ async function main() {
     log(`sha256 OK: ${name}`);
   }
 
-  // 2) 构建 api 与 web
+  // 2) 构建 llm、api 与 web（llm 必须先建：api 编译要读它的 dist 类型声明）
   if (!noBuild) {
+    log('building @vaultdeck/llm ...');
+    await run('npm run build --workspace @vaultdeck/llm');
     log('building @vaultdeck/api ...');
     await run('npm run build --workspace @vaultdeck/api');
     log('building @vaultdeck/web ...');
@@ -186,6 +188,8 @@ async function main() {
     throw new Error('apps/api/dist/main.js 不存在');
   if (!existsSync(path.join(ROOT, 'apps/web/dist/index.html')))
     throw new Error('apps/web/dist/index.html 不存在');
+  if (!existsSync(path.join(ROOT, 'packages', 'llm', 'dist', 'index.js')))
+    throw new Error('packages/llm/dist/index.js 不存在');
 
   await mkdir(staging, { recursive: true });
   // Rebuilds reuse the same version directory; remove stale files from earlier builds.
@@ -246,6 +250,19 @@ async function main() {
     await copyTree(entry.src, path.join(staging, destRel));
   }
   log(`node_modules packages copied: ${resolved.size} (API-only closure)`);
+
+  // @vaultdeck scope 被上面的闭包故意跳过，llm 的产物在这里显式补：
+  // require('@vaultdeck/llm') 解析到 current/api/node_modules/@vaultdeck/llm，
+  // 其 package.json 的 main 指向 dist，所以拷 dist + package.json 两条就够。
+  await copyTree(
+    path.join(ROOT, 'packages', 'llm', 'dist'),
+    path.join(staging, 'current', 'api', 'node_modules', '@vaultdeck', 'llm', 'dist'),
+  );
+  await copyTree(
+    path.join(ROOT, 'packages', 'llm', 'package.json'),
+    path.join(staging, 'current', 'api', 'node_modules', '@vaultdeck', 'llm', 'package.json'),
+  );
+  log('copied @vaultdeck/llm dist + package.json into closure');
 
   // 4) runtime/node：便携 Node（官方源或 VD_NODE_MIRROR + SHASUMS256 校验）
   const nodeZipName = `node-v${nodeVersion}-win-x64.zip`;

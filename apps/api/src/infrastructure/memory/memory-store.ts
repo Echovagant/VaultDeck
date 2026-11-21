@@ -3,6 +3,8 @@ import { randomUUID } from 'node:crypto';
 import type {
   AddFileInput,
   AddMemberInput,
+  AiSettingsPatchInput,
+  AiSettingsView,
   CreateCategoryInput,
   CreateFolderInput,
   CreateProjectInput,
@@ -50,6 +52,14 @@ class MemoryStore implements StorePort {
     trashRetentionDays: TRASH_RETENTION_DAYS,
     instantUploadEnabled: true,
   };
+  // AI 密钥红线：内存存储保持明文、只存在于内存（没有磁盘可落），重启即清
+  private readonly ai: {
+    providerId: string | null;
+    baseUrl: string | null;
+    model: string | null;
+    effort: string | null;
+    apiKey: string | null;
+  } = { providerId: null, baseUrl: null, model: null, effort: null, apiKey: null };
 
   constructor() {
     this.seed();
@@ -182,6 +192,24 @@ class MemoryStore implements StorePort {
       this.settings.instantUploadEnabled = patch.instantUploadEnabled;
     }
     return { ...this.settings };
+  }
+
+  async getAiSettings(): Promise<AiSettingsView> {
+    const { apiKey, ...rest } = this.ai;
+    return { ...rest, hasApiKey: apiKey !== null };
+  }
+
+  async updateAiSettings(patch: AiSettingsPatchInput): Promise<AiSettingsView> {
+    if (patch.providerId !== undefined) this.ai.providerId = patch.providerId;
+    if (patch.baseUrl !== undefined) this.ai.baseUrl = patch.baseUrl;
+    if (patch.model !== undefined) this.ai.model = patch.model;
+    if (patch.effort !== undefined) this.ai.effort = patch.effort;
+    if (patch.apiKey !== undefined) this.ai.apiKey = patch.apiKey;
+    return this.getAiSettings();
+  }
+
+  async aiApiKey(): Promise<string | null> {
+    return this.ai.apiKey;
   }
 
   async updateProfile(userId: string, displayName: string): Promise<StoreUser> {

@@ -1,9 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-const kp = await import('../src/key-provider.ts');
-const pr = await import('../src/providers.ts');
-const ma = await import('../src/chat-client.ts');
+const llm = await import('../dist/index.js');
+const kp = llm;
+const pr = llm;
+const ma = llm;
 
 test('目录表：10 条接入线，id 唯一且字段齐全', () => {
   assert.equal(pr.LLM_PROVIDERS.length, 10);

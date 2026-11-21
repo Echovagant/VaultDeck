@@ -108,6 +108,84 @@
         </a-button>
         <a-button v-else danger class="mfa-action" @click="openMfaDisable"> 停用双重验证 </a-button>
       </div>
+
+      <div v-if="isLeader" class="settings-panel">
+        <h2 class="settings-title">AI 服务</h2>
+        <a-form layout="vertical">
+          <a-form-item label="供应商">
+            <a-select
+              v-model:value="aiForm.providerId"
+              :options="providerOptions"
+              placeholder="选择模型供应商"
+              allow-clear
+              @change="onProviderChange"
+            />
+          </a-form-item>
+          <a-form-item v-if="selectedProvider?.customEndpoint" label="接入点地址">
+            <a-input
+              v-model:value="aiForm.baseUrl"
+              placeholder="OpenAI 兼容端点，如 http://127.0.0.1:8000/v1"
+              allow-clear
+            />
+          </a-form-item>
+          <a-form-item label="模型">
+            <a-auto-complete
+              v-model:value="aiForm.model"
+              :options="modelOptions"
+              placeholder="保存后可拉取清单，或直接手填模型名"
+            />
+          </a-form-item>
+          <a-form-item v-if="selectedProvider?.effortLevels" label="思考强度">
+            <a-select
+              v-model:value="aiForm.effort"
+              :options="effortOptions"
+              placeholder="跟随供应商默认"
+              allow-clear
+            />
+          </a-form-item>
+          <a-form-item label="API Key">
+            <a-input-password
+              v-model:value="aiForm.apiKey"
+              placeholder="粘贴密钥后保存；已保存的不回显"
+              autocomplete="new-password"
+            />
+          </a-form-item>
+        </a-form>
+
+        <a-alert
+          v-if="aiBundle && !aiBundle.encryptionEnabled"
+          type="warning"
+          show-icon
+          class="ai-alert"
+          message="未配置加密密钥（VD_ENCRYPTION_KEY），无法保存 API Key"
+        />
+        <p v-else-if="selectedProvider && selectedProvider.family !== 'local'" class="settings-hint">
+          使用该供应商时，查询语句会发送给该厂商；本机 Ollama 不会出局域网。
+        </p>
+
+        <div class="status-grid ai-status">
+          <div class="status-item">
+            <span class="status-label">API KEY</span>
+            <span class="status-value">{{ aiBundle?.settings.hasApiKey ? '已保存' : '未保存' }}</span>
+          </div>
+        </div>
+
+        <div class="ai-actions">
+          <a-button
+            :loading="aiFetchingModels"
+            :disabled="!selectedProvider?.modelsSupported"
+            @click="fetchModels"
+          >
+            拉取模型清单
+          </a-button>
+          <a-button danger :disabled="!aiBundle?.settings.hasApiKey" @click="clearApiKey">
+            清除密钥
+          </a-button>
+          <a-button type="primary" :loading="aiSaving" @click="saveAiSettings">
+            保存 AI 设置
+          </a-button>
+        </div>
+      </div>
     </div>
 
     <div class="settings-actions">
@@ -187,6 +265,34 @@ import { message } from 'ant-design-vue';
 import { computed, onMounted, reactive, ref } from 'vue';
 
 import { ApiError, api, formatBytes, type MfaSetup } from '@/api/client';
+import { useSessionStore } from '@/stores/session';
+
+interface AiProviderEntry {
+  id: string;
+  displayName: string;
+  baseUrl: string;
+  modelsSupported: boolean;
+  family: string;
+  effortLevels: string[] | null;
+  effortSupported: boolean;
+  customEndpoint: boolean;
+  note: string;
+  fallbackModels: string[];
+}
+
+interface AiSettingsView {
+  providerId: string | null;
+  baseUrl: string | null;
+  model: string | null;
+  effort: string | null;
+  hasApiKey: boolean;
+}
+
+interface AiBundle {
+  settings: AiSettingsView;
+  providers: AiProviderEntry[];
+  encryptionEnabled: boolean;
+}
 
 interface SettingsResponse {
   maxUploadBytes: number;
@@ -345,7 +451,135 @@ async function confirmMfaDisable(): Promise<void> {
   }
 }
 
-onMounted(load);
+// ---------- AI 服务设置（仅领队） ----------
+
+const session = useSessionStore();
+const isLeader = computed(() => session.user?.role === 'LEADER');
+
+const aiBundle = ref<AiBundle | null>(null);
+const aiSaving = ref(false);
+const aiFetchingModels = ref(false);
+const modelOptions = ref<Array<{ value: string }>>([]);
+const aiForm = reactive<{
+  providerId: string | null;
+  baseUrl: string;
+  model: string;
+  effort: string | null;
+  apiKey: string;
+}>({ providerId: null, baseUrl: '', model: '', effort: null, apiKey: '' });
+
+const selectedProvider = computed<AiProviderEntry | null>(
+  () => aiBundle.value?.providers.find((p) => p.id === aiForm.providerId) ?? null,
+);
+
+const providerOptions = computed(() =>
+  (aiBundle.value?.providers ?? []).map((p) => ({
+    value: p.id,
+    label: p.customEndpoint ? `${p.displayName}（自填端点）` : p.displayName,
+  })),
+);
+
+const effortOptions = computed(
+  () => (selectedProvider.value?.effortLevels ?? []).map((level) => ({ value: level })),
+);
+
+function onProviderChange(): void {
+  // 换供应商后旧档位可能不被支持：不支持档位的直接清掉，避免保存时被后端 400
+  if (!selectedProvider.value?.effortLevels) aiForm.effort = null;
+  modelOptions.value = [];
+}
+
+async function loadAi(): Promise<void> {
+  try {
+    const bundle = await api<AiBundle>('/ai/settings');
+    aiBundle.value = bundle;
+    aiForm.providerId = bundle.settings.providerId;
+    aiForm.baseUrl = bundle.settings.baseUrl ?? '';
+    aiForm.model = bundle.settings.model ?? '';
+    aiForm.effort = bundle.settings.effort;
+    aiForm.apiKey = '';
+  } catch (error) {
+    message.error(error instanceof ApiError ? error.message : '加载 AI 设置失败');
+  }
+}
+
+function fillAiFormFromBundle(bundle: AiBundle): void {
+  aiBundle.value = bundle;
+  aiForm.providerId = bundle.settings.providerId;
+  aiForm.baseUrl = bundle.settings.baseUrl ?? '';
+  aiForm.model = bundle.settings.model ?? '';
+  aiForm.effort = bundle.settings.effort;
+  aiForm.apiKey = '';
+}
+
+async function saveAiSettings(): Promise<void> {
+  if (selectedProvider.value?.customEndpoint && !aiForm.baseUrl.trim()) {
+    message.warning('自定义端点需要填写接入点地址');
+    return;
+  }
+  aiSaving.value = true;
+  try {
+    const body: Record<string, unknown> = {
+      providerId: aiForm.providerId,
+      baseUrl: aiForm.baseUrl.trim() || null,
+      model: aiForm.model.trim() || null,
+      effort: aiForm.effort,
+    };
+    // 密钥只在输入框非空时随发；已保存的密钥不回显也不重传
+    if (aiForm.apiKey.trim()) body['apiKey'] = aiForm.apiKey.trim();
+    const updated = await api<AiBundle>('/ai/settings', {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    });
+    fillAiFormFromBundle(updated);
+    message.success('AI 设置已保存');
+  } catch (error) {
+    message.error(error instanceof ApiError ? error.message : '保存 AI 设置失败');
+  } finally {
+    aiSaving.value = false;
+  }
+}
+
+async function fetchModels(): Promise<void> {
+  aiFetchingModels.value = true;
+  try {
+    const result = await api<{ models: string[]; source: string; warning: string | null }>(
+      '/ai/models',
+      { method: 'POST' },
+    );
+    modelOptions.value = result.models.map((name) => ({ value: name }));
+    if (result.source !== 'api') {
+      message.warning(result.warning ?? '实时清单没拉到，用的是离线兜底清单');
+    } else {
+      message.success(`拉到 ${result.models.length} 个模型`);
+    }
+  } catch (error) {
+    message.error(error instanceof ApiError ? error.message : '拉取清单失败');
+  } finally {
+    aiFetchingModels.value = false;
+  }
+}
+
+async function clearApiKey(): Promise<void> {
+  aiSaving.value = true;
+  try {
+    const updated = await api<AiBundle>('/ai/settings', {
+      method: 'PATCH',
+      body: JSON.stringify({ clearApiKey: true }),
+    });
+    fillAiFormFromBundle(updated);
+    message.success('已清除保存的密钥');
+  } catch (error) {
+    message.error(error instanceof ApiError ? error.message : '清除密钥失败');
+  } finally {
+    aiSaving.value = false;
+  }
+}
+
+onMounted(() => {
+  void load();
+  if (isLeader.value) void loadAi();
+});
 </script>
 
 <style scoped>
@@ -423,6 +657,21 @@ onMounted(load);
 }
 
 .mfa-action {
+  margin-top: 12px;
+}
+
+.ai-alert {
+  margin-top: 8px;
+}
+
+.ai-status {
+  margin-top: 12px;
+}
+
+.ai-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
   margin-top: 12px;
 }
 

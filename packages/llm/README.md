@@ -69,5 +69,11 @@ const res = await chatOnce({
 ## 验证
 
 - npm run typecheck --workspace @vaultdeck/llm：0 错误
-- npm run test --workspace @vaultdeck/llm：17 个用例全过（假 fetch，不联网）
+- npm run test --workspace @vaultdeck/llm：先构建 dist 再跑 node --test，17 个用例全过（假 fetch，不联网）
 - 密钥扫描：包内无真实 key（只有类型、前缀模式与兜底正则）
+
+## 在本仓库内被消费
+
+- 包输出 CommonJS dist，main/types 指向 dist/；apps/api 以 workspace 依赖 `"@vaultdeck/llm": "0.1.0"` 引入。
+- tsx 直跑源码与 node 跑 dist 两条路径均可 require。
+- 离线发布包的 node_modules 闭包故意跳过 @vaultdeck scope，构建脚本需显式拷贝 packages/llm/dist 与 package.json 到 `node_modules/@vaultdeck/llm/`。

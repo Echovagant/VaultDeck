@@ -94,6 +94,24 @@ export interface SettingsPatch {
   instantUploadEnabled?: boolean;
 }
 
+/** 对外可见的 AI 服务设置（永不携带密钥本身，只有 hasApiKey 布尔） */
+export interface AiSettingsView {
+  providerId: string | null;
+  baseUrl: string | null;
+  model: string | null;
+  effort: string | null;
+  hasApiKey: boolean;
+}
+
+export interface AiSettingsPatchInput {
+  providerId?: string | null;
+  baseUrl?: string | null;
+  model?: string | null;
+  effort?: string | null;
+  /** undefined=不动；null=清除；字符串=写入（内存明文，落库前由实现加密） */
+  apiKey?: string | null;
+}
+
 export interface CreateProjectInput {
   projectCode: string;
   projectName: string;
@@ -200,6 +218,11 @@ export interface StorePort {
 
   getSettings(): Promise<StoreSettings>;
   updateSettings(patch: SettingsPatch): Promise<StoreSettings>;
+
+  getAiSettings(): Promise<AiSettingsView>;
+  updateAiSettings(patch: AiSettingsPatchInput): Promise<AiSettingsView>;
+  /** 明文 API Key，仅供服务端调用模型适配器，禁止回传前端或写入日志 */
+  aiApiKey(): Promise<string | null>;
 
   memberProjectIds(userId: string): Promise<string[]>;
   visibleProjectIds(user: StoreUser): Promise<string[] | null>;

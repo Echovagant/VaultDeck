@@ -21,7 +21,7 @@
     "contract:check": "node scripts/contracts-check.mjs",
     "check:sanitize": "node scripts/check-sanitization.mjs",
     "db:migrate": "tsx apps/api/src/infrastructure/db/migrate-cli.ts",
-    "typecheck": "npm run typecheck --workspace @vaultdeck/api && npm run typecheck --workspace @vaultdeck/web && npm run typecheck --workspace @vaultdeck/shared && npm run typecheck --workspace @vaultdeck/llm"
+    "typecheck": "npm run build --workspace @vaultdeck/llm && npm run typecheck --workspace @vaultdeck/api && npm run typecheck --workspace @vaultdeck/web && npm run typecheck --workspace @vaultdeck/shared && npm run typecheck --workspace @vaultdeck/llm"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",

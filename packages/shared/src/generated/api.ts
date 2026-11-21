@@ -660,6 +660,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ai/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getAiSettings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["updateAiSettings"];
+        trace?: never;
+    };
+    "/ai/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["listAiModels"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/parse-search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["parseNaturalSearch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/system/settings": {
         parameters: {
             query?: never;
@@ -1076,6 +1124,56 @@ export interface components {
             chunkSizeBytes?: number;
             trashRetentionDays?: number;
             instantUploadEnabled?: boolean;
+        };
+        AiSettingsView: {
+            providerId?: string | null;
+            baseUrl?: string | null;
+            model?: string | null;
+            effort?: string | null;
+            hasApiKey?: boolean;
+        };
+        AiProviderEntry: {
+            id: string;
+            displayName: string;
+            baseUrl: string;
+            modelsSupported: string[];
+            family: string;
+            effortLevels?: string[] | null;
+            effortSupported: boolean;
+            customEndpoint: boolean;
+            note: string;
+            fallbackModels?: string[];
+        };
+        AiSettingsBundle: {
+            settings: components["schemas"]["AiSettingsView"];
+            providers: components["schemas"]["AiProviderEntry"][];
+            encryptionEnabled: boolean;
+        };
+        AiSettingsPatch: {
+            providerId?: string | null;
+            baseUrl?: string | null;
+            model?: string | null;
+            effort?: string | null;
+            apiKey?: string;
+            clearApiKey?: boolean;
+        };
+        AiModelsResult: {
+            models: string[];
+            /** @enum {string} */
+            source: "api" | "stale" | "fallback";
+            warning?: string | null;
+        };
+        ParsedSearchFilters: {
+            keyword?: string | null;
+            uploadedFrom?: string | null;
+            uploadedTo?: string | null;
+            minSizeBytes?: number | null;
+            maxSizeBytes?: number | null;
+            extensions?: string[] | null;
+        };
+        ParseSearchResult: {
+            filters: components["schemas"]["ParsedSearchFilters"] | null;
+            notice?: string | null;
         };
     };
     responses: {
@@ -2323,9 +2421,19 @@ export interface operations {
     };
     searchFiles: {
         parameters: {
-            query: {
-                q: string;
+            query?: {
+                q?: string;
                 projectId?: string;
+                /** @description 上传日期下限（含端点），格式 YYYY-MM-DD */
+                uploadedFrom?: string;
+                /** @description 上传日期上限（含端点），格式 YYYY-MM-DD */
+                uploadedTo?: string;
+                /** @description 文件大小下限，单位字节 */
+                minSizeBytes?: number;
+                /** @description 文件大小上限，单位字节 */
+                maxSizeBytes?: number;
+                /** @description 逗号分隔的扩展名白名单，如「pdf、docx」 */
+                extensions?: string;
                 categoryId?: string;
                 uploaderId?: string;
                 page?: number;
@@ -2540,6 +2648,99 @@ export interface operations {
                     "application/json": components["schemas"]["Health"];
                 };
             };
+        };
+    };
+    getAiSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description AI 服务设置与厂商目录 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiSettingsBundle"];
+                };
+            };
+        };
+    };
+    updateAiSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AiSettingsPatch"];
+            };
+        };
+        responses: {
+            /** @description 已更新 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiSettingsBundle"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    listAiModels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 可用模型清单 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiModelsResult"];
+                };
+            };
+            409: components["responses"]["Conflict"];
+        };
+    };
+    parseNaturalSearch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    query: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 解析出的搜索条件与提示语，未解析出条件时 filters 为 null */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ParseSearchResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
         };
     };
     getSettings: {

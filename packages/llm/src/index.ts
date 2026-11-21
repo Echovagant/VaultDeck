@@ -1,3 +1,3 @@
-export * from './key-provider.ts';
-export * from './providers.ts';
-export * from './chat-client.ts';
+export * from './key-provider';
+export * from './providers';
+export * from './chat-client';

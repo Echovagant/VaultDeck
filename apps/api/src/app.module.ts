@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { AuthController } from './interfaces/http/controllers/auth.controller';
+import { AiController } from './interfaces/http/controllers/ai.controller';
 import { AuditController } from './interfaces/http/controllers/audit.controller';
 import { BundlesController } from './interfaces/http/controllers/bundles.controller';
 import { CategoriesController } from './interfaces/http/controllers/categories.controller';
@@ -20,6 +21,7 @@ import { SystemIntegrityController } from './interfaces/http/controllers/system-
   controllers: [
     HealthController,
     AuthController,
+    AiController,
     ProjectsController,
     FoldersController,
     FilesController,

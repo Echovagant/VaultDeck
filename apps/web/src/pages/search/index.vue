@@ -4,7 +4,7 @@
       <div>
         <p class="vd-eyebrow">QUERY / FILES</p>
         <h1 class="vd-page-title">搜索</h1>
-        <p class="vd-page-sub">按文件名检索你有权查看的资料</p>
+        <p class="vd-page-sub">按文件名检索你有权查看的资料；也可以用一句话让 AI 帮你拼条件</p>
       </div>
     </header>
 
@@ -17,6 +17,37 @@
         style="max-width: 420px"
         @search="search"
       />
+    </div>
+
+    <div class="ai-bar">
+      <a-input-search
+        v-model:value="aiQuery"
+        placeholder="用一句话描述要找的文件，例如：上周上传的超过 100MB 的视频"
+        enter-button="AI 解析"
+        :loading="aiParsing"
+        style="max-width: 560px"
+        @search="parseWithAi"
+      />
+      <span class="ai-bar-hint">解析出的条件仅在本机服务器内处理</span>
+    </div>
+
+    <div v-if="filters" class="filter-chips">
+      <a-tag v-if="filters.keyword" closable @close="clearKeyword">{{ filters.keyword }}</a-tag>
+      <a-tag v-if="filters.uploadedFrom || filters.uploadedTo" closable @close="clearDates">
+        上传：{{ filters.uploadedFrom ?? '…' }} ~ {{ filters.uploadedTo ?? '…' }}
+      </a-tag>
+      <a-tag v-if="filters.minSizeBytes !== null || filters.maxSizeBytes !== null" closable @close="clearSizes">
+        大小：{{ sizeRangeLabel }}
+      </a-tag>
+      <a-tag
+        v-for="ext in filters.extensions ?? []"
+        :key="ext"
+        closable
+        @close="removeExtension(ext)"
+      >
+        .{{ ext }}
+      </a-tag>
+      <a-button type="link" size="small" @click="clearFilters">清空条件</a-button>
     </div>
 
     <a-table
@@ -58,7 +89,7 @@
 
 <script setup lang="ts">
 import { message } from 'ant-design-vue';
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
 import { ApiError, api, formatBytes } from '@/api/client';
@@ -74,6 +105,16 @@ interface SearchItem {
   hasContent?: boolean;
 }
 
+/** AI 解析出的搜索条件（与契约 ParsedSearchFilters 同构） */
+interface ParsedFilters {
+  keyword: string | null;
+  uploadedFrom: string | null;
+  uploadedTo: string | null;
+  minSizeBytes: number | null;
+  maxSizeBytes: number | null;
+  extensions: string[] | null;
+}
+
 const route = useRoute();
 const router = useRouter();
 
@@ -85,6 +126,10 @@ const searched = ref(false);
 const previewVisible = ref(false);
 const previewFile = ref<SearchItem | null>(null);
 
+const aiQuery = ref('');
+const aiParsing = ref(false);
+const filters = ref<ParsedFilters | null>(null);
+
 const columns = [
   { title: '文件名', dataIndex: 'fileName', key: 'fileName' },
   { title: '项目', dataIndex: 'projectName', key: 'projectName', width: 190 },
@@ -93,27 +138,120 @@ const columns = [
   { title: '操作', key: 'actions', width: 230 },
 ];
 
+const sizeRangeLabel = computed(() => {
+  const f = filters.value;
+  if (!f) return '';
+  if (f.minSizeBytes !== null && f.maxSizeBytes !== null) {
+    return `${formatBytes(f.minSizeBytes)} ~ ${formatBytes(f.maxSizeBytes)}`;
+  }
+  if (f.minSizeBytes !== null) return `≥ ${formatBytes(f.minSizeBytes)}`;
+  if (f.maxSizeBytes !== null) return `≤ ${formatBytes(f.maxSizeBytes)}`;
+  return '';
+});
+
+function filtersNonEmpty(value: ParsedFilters | null): boolean {
+  return Boolean(
+    value &&
+      (value.keyword ||
+        value.uploadedFrom ||
+        value.uploadedTo ||
+        value.minSizeBytes !== null ||
+        value.maxSizeBytes !== null ||
+        (value.extensions && value.extensions.length > 0)),
+  );
+}
+
+async function parseWithAi(): Promise<void> {
+  const query = aiQuery.value.trim();
+  if (!query) {
+    message.warning('先描述一下要找什么');
+    return;
+  }
+  aiParsing.value = true;
+  try {
+    const result = await api<{ filters: ParsedFilters | null; notice: string | null }>(
+      '/ai/parse-search',
+      { method: 'POST', body: JSON.stringify({ query }) },
+    );
+    if (result.notice) message.info(result.notice);
+    if (filtersNonEmpty(result.filters)) {
+      filters.value = result.filters;
+      await search();
+    }
+  } catch (error) {
+    message.error(error instanceof ApiError ? error.message : 'AI 解析失败');
+  } finally {
+    aiParsing.value = false;
+  }
+}
+
 async function search(): Promise<void> {
   const value = keyword.value.trim();
-  if (value.length < 2) {
+  // 手输关键词优先；没有手输时用 AI 解析出的关键词
+  const effectiveKeyword = value.length >= 2 ? value : (filters.value?.keyword ?? '');
+  if (effectiveKeyword.length > 0 && effectiveKeyword.length < 2) {
     message.warning('关键词至少 2 个字符');
     return;
   }
+  if (effectiveKeyword.length < 2 && !filtersNonEmpty(filters.value)) {
+    message.warning('请输入关键词，或用 AI 解析出搜索条件');
+    return;
+  }
+
+  const params = new URLSearchParams();
+  if (effectiveKeyword.length >= 2) params.set('q', effectiveKeyword);
+  if (filters.value?.uploadedFrom) params.set('uploadedFrom', filters.value.uploadedFrom);
+  if (filters.value?.uploadedTo) params.set('uploadedTo', filters.value.uploadedTo);
+  if (filters.value?.minSizeBytes !== null && filters.value?.minSizeBytes !== undefined) {
+    params.set('minSizeBytes', String(filters.value.minSizeBytes));
+  }
+  if (filters.value?.maxSizeBytes !== null && filters.value?.maxSizeBytes !== undefined) {
+    params.set('maxSizeBytes', String(filters.value.maxSizeBytes));
+  }
+  if (filters.value?.extensions && filters.value.extensions.length > 0) {
+    params.set('extensions', filters.value.extensions.join(','));
+  }
+  params.set('pageSize', '100');
 
   loading.value = true;
   try {
-    const result = await api<{ items: SearchItem[]; total: number }>(
-      `/search?q=${encodeURIComponent(value)}&pageSize=100`,
-    );
+    const result = await api<{ items: SearchItem[]; total: number }>(`/search?${params}`);
     items.value = result.items;
     total.value = result.total;
     searched.value = true;
-    await router.replace({ path: '/search', query: { q: value } });
+    await router.replace({ path: '/search', query: value.length >= 2 ? { q: value } : {} });
   } catch (error) {
     message.error(error instanceof ApiError ? error.message : '搜索失败');
   } finally {
     loading.value = false;
   }
+}
+
+function clearKeyword(): void {
+  if (filters.value) filters.value.keyword = null;
+}
+
+function clearDates(): void {
+  if (filters.value) {
+    filters.value.uploadedFrom = null;
+    filters.value.uploadedTo = null;
+  }
+}
+
+function clearSizes(): void {
+  if (filters.value) {
+    filters.value.minSizeBytes = null;
+    filters.value.maxSizeBytes = null;
+  }
+}
+
+function removeExtension(ext: string): void {
+  if (!filters.value?.extensions) return;
+  filters.value.extensions = filters.value.extensions.filter((item) => item !== ext);
+}
+
+function clearFilters(): void {
+  filters.value = null;
 }
 
 async function download(item: SearchItem): Promise<void> {
@@ -147,6 +285,26 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.ai-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.ai-bar-hint {
+  color: var(--vd-text-secondary);
+  font-size: 11px;
+}
+
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
 .hint {
   margin-top: 12px;
   color: var(--vd-text-secondary);

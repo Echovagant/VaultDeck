@@ -11,7 +11,7 @@
  *
  * fetch 可注入：单元测试不联网，用假的 fetch 验证解析与错误处理。
  */
-import { redactSecrets } from './key-provider.ts';
+import { redactSecrets } from './key-provider';
 
 /** 只用到的响应字段（够测，也不把整个 Response 类型拖进来） */
 export interface HttpResponseLike {

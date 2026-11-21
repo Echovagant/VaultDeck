@@ -25,8 +25,8 @@
  * ⚠️ **有一类套餐不接**：条款写明「仅限在 AI 编程工具内交互式使用、禁止 API 调用」的
  * Coding Plan（百炼、火山方舟）。目录里没有它们，note 里写明了为什么 —— 别偷偷加回来。
  */
-import type { CredentialReader, KeyProvider, LlmCredentials, LlmProviderId } from './key-provider.ts';
-import { MINIMAX_MODELS, MINIMAX_EFFORT_LEVELS } from './key-provider.ts';
+import type { CredentialReader, KeyProvider, LlmCredentials, LlmProviderId } from './key-provider';
+import { MINIMAX_MODELS, MINIMAX_EFFORT_LEVELS } from './key-provider';
 
 /** 一条接入线（厂商 × 端点 × 凭证类型） */
 export interface LlmProviderEntry {

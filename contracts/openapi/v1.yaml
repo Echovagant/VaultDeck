@@ -24,6 +24,7 @@ tags:
   - name: audit
   - name: imports
   - name: system
+  - name: ai
 paths:
   /auth/login:
     post:
@@ -747,8 +748,38 @@ paths:
       tags: [search]
       operationId: searchFiles
       parameters:
-        - { name: q, in: query, required: true, schema: { type: string, minLength: 2 } }
+        - { name: q, in: query, required: false, schema: { type: string, minLength: 2 } }
         - { name: projectId, in: query, schema: { type: string, format: uuid } }
+        - {
+            name: uploadedFrom,
+            in: query,
+            schema: { type: string, format: date },
+            description: 上传日期下限（含端点），格式 YYYY-MM-DD
+          }
+        - {
+            name: uploadedTo,
+            in: query,
+            schema: { type: string, format: date },
+            description: 上传日期上限（含端点），格式 YYYY-MM-DD
+          }
+        - {
+            name: minSizeBytes,
+            in: query,
+            schema: { type: integer, minimum: 0 },
+            description: 文件大小下限，单位字节
+          }
+        - {
+            name: maxSizeBytes,
+            in: query,
+            schema: { type: integer, minimum: 0 },
+            description: 文件大小上限，单位字节
+          }
+        - {
+            name: extensions,
+            in: query,
+            schema: { type: string },
+            description: 逗号分隔的扩展名白名单，如「pdf、docx」
+          }
         - { name: categoryId, in: query, schema: { type: string, format: uuid } }
         - { name: uploaderId, in: query, schema: { type: string, format: uuid } }
         - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
@@ -881,6 +912,62 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Health' }
+  /ai/settings:
+    get:
+      tags: [ai]
+      operationId: getAiSettings
+      responses:
+        '200':
+          description: AI 服务设置与厂商目录
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AiSettingsBundle' }
+    patch:
+      tags: [ai]
+      operationId: updateAiSettings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AiSettingsPatch' }
+      responses:
+        '200':
+          description: 已更新
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AiSettingsBundle' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /ai/models:
+    post:
+      tags: [ai]
+      operationId: listAiModels
+      responses:
+        '200':
+          description: 可用模型清单
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AiModelsResult' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /ai/parse-search:
+    post:
+      tags: [ai]
+      operationId: parseNaturalSearch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                query: { type: string, minLength: 1, maxLength: 300 }
+      responses:
+        '200':
+          description: 解析出的搜索条件与提示语，未解析出条件时 filters 为 null
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ParseSearchResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
   /system/settings:
     get:
       tags: [system]
@@ -1492,3 +1579,71 @@ components:
         chunkSizeBytes: { type: integer, minimum: 1048576 }
         trashRetentionDays: { type: integer, minimum: 1, maximum: 365 }
         instantUploadEnabled: { type: boolean }
+    AiSettingsView:
+      type: object
+      additionalProperties: false
+      properties:
+        providerId: { type: [string, 'null'] }
+        baseUrl: { type: [string, 'null'] }
+        model: { type: [string, 'null'] }
+        effort: { type: [string, 'null'] }
+        hasApiKey: { type: boolean }
+    AiProviderEntry:
+      type: object
+      required: [id, displayName, baseUrl, modelsSupported, family, effortSupported, customEndpoint, note]
+      properties:
+        id: { type: string }
+        displayName: { type: string }
+        baseUrl: { type: string }
+        modelsSupported: { type: array, items: { type: string } }
+        family: { type: string }
+        effortLevels: { type: [array, 'null'], items: { type: string } }
+        effortSupported: { type: boolean }
+        customEndpoint: { type: boolean }
+        note: { type: string }
+        fallbackModels: { type: array, items: { type: string } }
+    AiSettingsBundle:
+      type: object
+      required: [settings, providers, encryptionEnabled]
+      properties:
+        settings: { $ref: '#/components/schemas/AiSettingsView' }
+        providers:
+          type: array
+          items: { $ref: '#/components/schemas/AiProviderEntry' }
+        encryptionEnabled: { type: boolean }
+    AiSettingsPatch:
+      type: object
+      additionalProperties: false
+      properties:
+        providerId: { type: [string, 'null'] }
+        baseUrl: { type: [string, 'null'] }
+        model: { type: [string, 'null'] }
+        effort: { type: [string, 'null'] }
+        apiKey: { type: string, maxLength: 300, writeOnly: true }
+        clearApiKey: { type: boolean }
+    AiModelsResult:
+      type: object
+      required: [models, source]
+      properties:
+        models: { type: array, items: { type: string } }
+        source: { type: string, enum: [api, stale, fallback] }
+        warning: { type: [string, 'null'] }
+    ParsedSearchFilters:
+      type: object
+      additionalProperties: false
+      properties:
+        keyword: { type: [string, 'null'] }
+        uploadedFrom: { type: [string, 'null'] }
+        uploadedTo: { type: [string, 'null'] }
+        minSizeBytes: { type: [integer, 'null'], minimum: 0 }
+        maxSizeBytes: { type: [integer, 'null'], minimum: 0 }
+        extensions: { type: [array, 'null'], items: { type: string } }
+    ParseSearchResult:
+      type: object
+      required: [filters]
+      properties:
+        filters:
+          anyOf:
+            - { $ref: '#/components/schemas/ParsedSearchFilters' }
+            - { type: 'null' }
+        notice: { type: [string, 'null'] }

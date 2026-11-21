@@ -27,7 +27,10 @@ import type {
   UpdateCategoryInput,
   UpdateFolderInput,
   UpdateUserInput,
+  AiSettingsPatchInput,
+  AiSettingsView,
 } from '../../application/ports/store.port';
+import { openText, sealText } from '../crypto/at-rest';
 import { hashPassword, verifyPassword } from './password';
 
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
@@ -314,6 +317,57 @@ export class PgStore implements StorePort {
       );
     }
     return this.getSettings();
+  }
+
+  async getAiSettings(): Promise<AiSettingsView> {
+    const result = await this.pool.query<{ setting_key: string; setting_value: unknown }>(
+      'SELECT setting_key, setting_value FROM setting WHERE setting_key LIKE $1',
+      ['ai.%'],
+    );
+    const values = new Map(result.rows.map((row) => [row.setting_key, row.setting_value]));
+    const sealed = values.get('ai.apiKey');
+    let apiKey: string | null = null;
+    if (typeof sealed === 'string' && sealed.length > 0) {
+      apiKey = openText(sealed);
+    }
+    return {
+      providerId: (values.get('ai.providerId') as string | null) ?? null,
+      baseUrl: (values.get('ai.baseUrl') as string | null) ?? null,
+      model: (values.get('ai.model') as string | null) ?? null,
+      effort: (values.get('ai.effort') as string | null) ?? null,
+      hasApiKey: apiKey !== null,
+    };
+  }
+
+  async updateAiSettings(patch: AiSettingsPatchInput): Promise<AiSettingsView> {
+    const entries: Array<[string, unknown]> = [];
+    if (patch.providerId !== undefined) entries.push(['ai.providerId', patch.providerId]);
+    if (patch.baseUrl !== undefined) entries.push(['ai.baseUrl', patch.baseUrl]);
+    if (patch.model !== undefined) entries.push(['ai.model', patch.model]);
+    if (patch.effort !== undefined) entries.push(['ai.effort', patch.effort]);
+    if (patch.apiKey !== undefined) {
+      // 密钥落库前一律 sealText（v1: 前缀），清除时存 JSON null
+      entries.push(['ai.apiKey', patch.apiKey === null ? null : sealText(patch.apiKey)]);
+    }
+    for (const [key, value] of entries) {
+      await this.pool.query(
+        `INSERT INTO setting (setting_key, setting_value) VALUES ($1, $2::jsonb)
+         ON CONFLICT (setting_key) DO UPDATE
+         SET setting_value = EXCLUDED.setting_value, updated_at = now()`,
+        [key, JSON.stringify(value)],
+      );
+    }
+    return this.getAiSettings();
+  }
+
+  async aiApiKey(): Promise<string | null> {
+    const result = await this.pool.query<{ setting_value: unknown }>(
+      'SELECT setting_value FROM setting WHERE setting_key = $1',
+      ['ai.apiKey'],
+    );
+    const value = result.rows[0]?.setting_value;
+    if (typeof value !== 'string' || value.length === 0) return null;
+    return openText(value);
   }
 
   async updateProfile(userId: string, displayName: string): Promise<StoreUser> {
