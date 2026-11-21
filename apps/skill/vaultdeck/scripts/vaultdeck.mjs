@@ -35,8 +35,8 @@ function parseArgs(argv) {
 const args = parseArgs(process.argv.slice(2));
 const command = args._[0];
 
-let baseUrl = (args.url ?? process.env['VD_VAULTDECK_URL'] ?? '').replace(/\/+$/, '');
-let token = args.token ?? process.env['VD_VAULTDECK_TOKEN'] ?? '';
+const baseUrl = (args.url ?? process.env['VD_VAULTDECK_URL'] ?? '').replace(/\/+$/, '');
+const token = args.token ?? process.env['VD_VAULTDECK_TOKEN'] ?? '';
 
 async function api(pathname, init = {}) {
   if (!token) fail('缺少访问令牌：先执行 exchange，或设置环境变量 VD_VAULTDECK_TOKEN');

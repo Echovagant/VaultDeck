@@ -57,10 +57,6 @@ async function api(pathname, init = {}) {
   return body;
 }
 
-function sha256Hex(data) {
-  return createHash('sha256').update(data).digest('hex');
-}
-
 // ---------- 工具实现 ----------
 
 async function toolListProjects() {
@@ -220,7 +216,11 @@ async function toolUploadFile(args) {
     const chunk = Buffer.alloc(end - start);
     let read = 0;
     for await (const piece of createReadStream(filePath, { start, end: end - 1 })) {
-      piece.copy ? piece.copy(chunk, read) : chunk.set(piece, read);
+      if (piece.copy) {
+        piece.copy(chunk, read);
+      } else {
+        chunk.set(piece, read);
+      }
       read += piece.length;
     }
     await api(`/upload-sessions/${sessionId}/chunks/${index}`, {
