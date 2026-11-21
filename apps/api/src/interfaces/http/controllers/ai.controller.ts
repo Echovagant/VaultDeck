@@ -1,10 +1,11 @@
-import { Body, Controller, Get, Headers, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, Headers, HttpCode, Patch, Post } from '@nestjs/common';
 
 import { findProvider } from '@vaultdeck/llm';
 
 import type { AiSettingsPatchInput } from '../../../application/ports/store.port';
 import { parseNaturalSearch } from '../../../application/use-cases/parse-natural-search';
 import { encryptionEnabled } from '../../../infrastructure/crypto/at-rest';
+import { logger } from '../../../infrastructure/logging/logger';
 import { aiProvidersCatalog, chatWith, pullModelIds, resolveAiConfig } from '../../../infrastructure/llm/ai-engine';
 import { store, storeKind } from '../../../infrastructure/store';
 import { DomainError } from '../errors/problem-details';
@@ -134,6 +135,7 @@ export class AiController {
   }
 
   @Post('models')
+  @HttpCode(200)
   async models(@Headers('authorization') authorization?: string) {
     const user = await requireUser(authorization);
     if (user.role !== 'LEADER') {
@@ -149,6 +151,7 @@ export class AiController {
   }
 
   @Post('parse-search')
+  @HttpCode(200)
   async parseSearch(
     @Body(new StrictBodyPipe<ParseSearchBody>(parseSearchSchema)) body: ParseSearchBody,
     @Headers('authorization') authorization?: string,
@@ -162,6 +165,11 @@ export class AiController {
       return { filters: null, notice: 'AI 服务未配置，请先用关键词搜索' };
     }
 
-    return parseNaturalSearch(body.query, chatWith(config));
+    return parseNaturalSearch(body.query, chatWith(config), undefined, (error) => {
+      // 模型错误消息出 llm 包前已过 redactSecrets，这里只落日志不回传
+      logger.warn('ai.parse_chat_failed', {
+        message: error instanceof Error ? error.message : String(error),
+      });
+    });
   }
 }

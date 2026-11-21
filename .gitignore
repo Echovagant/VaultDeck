@@ -1,7 +1,7 @@
 # ---- 私有与敏感（禁止提交） ----
 _private/
 HANDOFF*.md
-private/
+/private/
 .local/
 *.local.md
 *.local.*
@@ -9,7 +9,7 @@ local-notes/
 .env
 .env.*
 !.env.example
-secrets/
+/secrets/
 *.secret
 *.pem
 *.key

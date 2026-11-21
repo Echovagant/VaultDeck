@@ -149,16 +149,19 @@ export const NOTICE_CHAT_FAILED = 'AI 服务暂时不可用，已退回普通搜
  * 主入口：一句话 → 搜索条件。
  *
  * 任何失败都降级为 { filters: null, notice }，绝不向上抛错。
+ * onError：可选的诊断回调（调用方记日志用；错误消息已由 llm 包脱敏）。
  */
 export async function parseNaturalSearch(
   query: string,
   chat: ChatFn,
   today: Date = new Date(),
+  onError?: (error: unknown) => void,
 ): Promise<NaturalSearchParseResult> {
   let reply: string;
   try {
     reply = await chat(buildParsePrompt(query, today.toISOString().slice(0, 10)));
-  } catch {
+  } catch (error) {
+    onError?.(error);
     return { filters: null, notice: NOTICE_CHAT_FAILED };
   }
 

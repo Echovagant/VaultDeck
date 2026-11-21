@@ -11,6 +11,12 @@ import {
   sha256Hex,
   syntheticAgentUser,
 } from '../auth/agent-grant';
+import {
+  loadPersistedAiKey,
+  loadPersistedAiProfile,
+  persistAiKey,
+  persistAiProfile,
+} from '../secrets/ai-key-file';
 import type {
   AddFileInput,
   AddMemberInput,
@@ -68,14 +74,18 @@ class MemoryStore implements StorePort {
     trashRetentionDays: TRASH_RETENTION_DAYS,
     instantUploadEnabled: true,
   };
-  // AI 密钥红线：内存存储保持明文、只存在于内存（没有磁盘可落），重启即清
+  // AI 密钥：内存明文（调用模型的物理必要），静止态经 ai-key-file 密封在仓库外；
+  // 非敏感设置（供应商等）明文 JSON 同目录。重启时解密 / 回读——不再「重启即清」
   private readonly ai: {
     providerId: string | null;
     baseUrl: string | null;
     model: string | null;
     effort: string | null;
     apiKey: string | null;
-  } = { providerId: null, baseUrl: null, model: null, effort: null, apiKey: null };
+  } = {
+    ...(loadPersistedAiProfile() ?? { providerId: null, baseUrl: null, model: null, effort: null }),
+    apiKey: loadPersistedAiKey(),
+  };
   // Agent 授权：码与 token 只存 hash，明文不落内存之外的任何地方
   private readonly agentGrants = new Map<
     string,
@@ -225,7 +235,18 @@ class MemoryStore implements StorePort {
     if (patch.baseUrl !== undefined) this.ai.baseUrl = patch.baseUrl;
     if (patch.model !== undefined) this.ai.model = patch.model;
     if (patch.effort !== undefined) this.ai.effort = patch.effort;
-    if (patch.apiKey !== undefined) this.ai.apiKey = patch.apiKey;
+    if (patch.apiKey !== undefined) {
+      this.ai.apiKey = patch.apiKey;
+      // 密封落盘（仓库外）；落盘失败退化为内存-only，保存本身不受影响
+      persistAiKey(patch.apiKey);
+    }
+    // 非敏感设置同步落盘，保证重启后完整回装
+    persistAiProfile({
+      providerId: this.ai.providerId,
+      baseUrl: this.ai.baseUrl,
+      model: this.ai.model,
+      effort: this.ai.effort,
+    });
     return this.getAiSettings();
   }
 
