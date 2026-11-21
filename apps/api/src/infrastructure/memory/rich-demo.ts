@@ -177,6 +177,15 @@ const KINDS: Array<{ kind: string; ext: string; folderHint: number }> = [
   { kind: 'spec', ext: 'txt', folderHint: 0 },
 ];
 
+/** MB/GB 量级压测样本（RICH-04 压测样本文件夹）：内容为重复块，sha 稳定可秒传 */
+const BIG_FILES: Array<{ fileName: string; sizeBytes: number }> = [
+  { fileName: 'RICH-04_压测样本_64MB.bin', sizeBytes: 64 * 1024 * 1024 },
+  { fileName: 'RICH-04_压测样本_128MB.bin', sizeBytes: 128 * 1024 * 1024 },
+  { fileName: 'RICH-04_压测样本_512MB.bin', sizeBytes: 512 * 1024 * 1024 },
+  { fileName: 'RICH-04_压测样本_1GB.bin', sizeBytes: 1024 * 1024 * 1024 },
+];
+const BIG_BLOCK_BYTES = 64 * 1024 * 1024;
+
 /** 富化种子入口：在基础 demo seed 之上追加。幂等对象落盘（按内容寻址）。 */
 export async function seedRichDemo(): Promise<void> {
   const users = await store.listUsers();
@@ -193,9 +202,11 @@ export async function seedRichDemo(): Promise<void> {
   let objectsWritten = 0;
   const started = Date.now();
   let fileIndex = 0;
+  const projectIds: Record<string, string> = {};
 
   for (const spec of PROJECTS) {
     const project = await store.createProject({ projectCode: spec.code, projectName: spec.name });
+    projectIds[spec.code] = project.projectId;
     await store.addMember({ projectId: project.projectId, userId: deputy.userId, memberRole: 'DEPUTY_LEADER' });
     await store.addMember({ projectId: project.projectId, userId: member.userId, memberRole: 'MEMBER' });
 
@@ -253,6 +264,61 @@ export async function seedRichDemo(): Promise<void> {
     projects: PROJECTS.length,
     files: filesCreated,
     objectsWritten,
+    durationMs: Date.now() - started,
+  });
+
+  // ---------- MB/GB 量级压测样本 ----------
+  // 内容 = 重复的 64MB 确定性块：内存峰值有界（不整块分配 GB 级 Buffer），
+  // sha 跨启动稳定（objectExists 命中后跳过写盘，但 sha 计算每次启动都要做）。
+  const bigFolder = await store.createFolder({
+    projectId: projectIds['RICH-04']!,
+    folderName: '压测样本',
+    parentId: null,
+    createdBy: leader.userId,
+  });
+  const block = Buffer.alloc(BIG_BLOCK_BYTES);
+  const pattern = Buffer.from(
+    `VaultDeck 压测样本块 ${'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.repeat(12)}\n`,
+    'utf8',
+  );
+  for (let offset = 0; offset < BIG_BLOCK_BYTES; offset += pattern.length) {
+    pattern.copy(block, offset);
+  }
+
+  for (const big of BIG_FILES) {
+    const chunkCount = big.sizeBytes / BIG_BLOCK_BYTES;
+    const hash = createHash('sha256');
+    for (let i = 0; i < chunkCount; i += 1) hash.update(block);
+    const sha256 = hash.digest('hex');
+
+    if (!(await objectStorage.objectExists(sha256))) {
+      const sessionId = randomUUID();
+      for (let i = 0; i < chunkCount; i += 1) {
+        await objectStorage.saveChunk(sessionId, i, block);
+      }
+      await objectStorage.mergeChunks(sessionId, chunkCount, sha256, big.sizeBytes);
+      await objectStorage.cleanupSession(sessionId);
+      objectsWritten += 1;
+      logger.info('rich_demo.big_object_written', { fileName: big.fileName, sizeBytes: big.sizeBytes });
+    }
+
+    await store.addFile({
+      projectId: projectIds['RICH-04']!,
+      folderId: bigFolder.folderId,
+      fileName: big.fileName,
+      sizeBytes: big.sizeBytes,
+      contentType: 'application/octet-stream',
+      uploaderId: leader.userId,
+      sha256,
+      objectPath: `objects/${sha256.slice(0, 2)}/${sha256}.bin`,
+    });
+    filesCreated += 1;
+  }
+
+  logger.info('rich_demo.big_files_seeded', {
+    count: BIG_FILES.length,
+    objectsWritten,
+    filesTotal: filesCreated,
     durationMs: Date.now() - started,
   });
 }
