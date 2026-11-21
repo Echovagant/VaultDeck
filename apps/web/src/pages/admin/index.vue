@@ -504,6 +504,11 @@ onMounted(() => {
 </script>
 
 <style scoped>
+/* 后台页两个面板纵向叠放，补面板间距 */
+.vd-panel + .vd-panel {
+  margin-top: 16px;
+}
+
 .row-actions {
   display: flex;
   align-items: center;
