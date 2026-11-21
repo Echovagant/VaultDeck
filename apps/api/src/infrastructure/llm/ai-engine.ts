@@ -42,10 +42,11 @@ export function resolveAiConfig(
   return effort ? { apiKey, baseUrl, model, effort } : { apiKey, baseUrl, model };
 }
 
-/** 带 60 秒超时的 fetch 注入：默认 fetch 没有超时，模型不回话就永远挂着。
- *  实测 max 档思考 + JSON 输出在慢时段会超过 20s（交接期定值被证伪），提到 60s。 */
+/** 模型调用超时：默认 60s（实测 max 档思考 + JSON 输出在慢时段会超过 20s，
+ *  交接期定值被证伪）；可用 VD_AI_TIMEOUT_MS 覆盖——夜间/高峰时段慢是真实用户会遇到的。 */
+const AI_TIMEOUT_MS = Number(process.env['VD_AI_TIMEOUT_MS'] ?? 60_000);
 const timeoutFetch: ChatOptions['fetchImpl'] = (url, init) =>
-  fetch(url, { ...(init as RequestInit), signal: AbortSignal.timeout(60_000) });
+  fetch(url, { ...(init as RequestInit), signal: AbortSignal.timeout(AI_TIMEOUT_MS) });
 
 /** 把配置包成「提示词 → 回话正文」的对话函数（parse-natural-search 的 ChatFn 形态） */
 export function chatWith(config: ResolvedAiConfig): (prompt: string) => Promise<string> {
