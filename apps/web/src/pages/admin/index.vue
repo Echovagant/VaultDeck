@@ -471,7 +471,7 @@ async function submitGrantCreate(): Promise<void> {
       body: JSON.stringify({
         name: grantForm.name.trim(),
         role: grantForm.role,
-        scopeAll: isLeader && grantForm.scopeMode === 'all',
+        scopeAll: isLeader.value && grantForm.scopeMode === 'all',
         projectIds: grantForm.scopeMode === 'all' ? [] : grantForm.projectIds,
         readOnly: grantForm.readOnly,
       }),

@@ -66,11 +66,11 @@ export class AgentController {
     // 权限上限：非领队创建的授权不得高于本人权限
     //   队员 → 只能建队员档；执行领队 → 本档或队员档
     //   范围 → 只能是自己参与的项目，不允许「全部项目」
-    let role = body.role;
+    const role = body.role;
     if (!isLeader && role === 'DEPUTY_LEADER' && user.role === 'MEMBER') {
       throw new DomainError('VAL', 'VD-VAL-012', '队员只能创建队员档位的授权', { status: 400 });
     }
-    let scopeAll = body.scopeAll;
+    const scopeAll = body.scopeAll;
     let projectIds = scopeAll ? [] : (body.projectIds ?? []);
     if (!isLeader) {
       if (scopeAll) {

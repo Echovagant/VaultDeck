@@ -84,7 +84,7 @@ function buildContent(kind: string, theme: string, projectName: string, index: n
   if (kind === 'minutes') {
     lines.push(
       `${projectName}——${theme}专题会议纪要`,
-      `时间：${date} 14:00-15:30　地点：三楼会议室　主持：${author}`,
+      `时间：${date} 14:00-15:30 | 地点：三楼会议室 | 主持：${author}`,
       '参会：领队、执行领队、各组骨干（名单见签到表）',
       '',
       '一、上期事项跟进',
@@ -105,7 +105,7 @@ function buildContent(kind: string, theme: string, projectName: string, index: n
     lines.push(
       `# ${projectName} ${theme}阶段报告（第 ${index % 9 + 1} 期）`,
       '',
-      `报告日期：${date}　编制：${author}`,
+      `报告日期：${date} | 编制：${author}`,
       '',
       '## 一、总体进展',
       `本期围绕「${theme}」完成既定工作量的 ${percent}%。核心产出包括：`,
