@@ -62,6 +62,182 @@ const PROJECTS: RichProjectSpec[] = [
 
 const BASE_DATE = new Date('2026-11-21T09:00:00+08:00');
 
+// ---------- Office/PDF 预览样例生成 ----------
+// 目的：给前端预览弹层（docx-preview / ExcelJS / 浏览器原生 PDF）提供真实可渲染的样本。
+// 不依赖 LibreOffice：docx = 手写 OOXML 打 stored-zip；pdf = 手写最小 PDF 1.4（英文，
+// 中文需嵌入字体，成本不成比例）；xlsx = exceljs（web 工作区依赖被 hoist 到根，dev 环境可用）。
+
+const CRC_TABLE = (() => {
+  const table = new Uint32Array(256);
+  for (let i = 0; i < 256; i += 1) {
+    let value = i;
+    for (let bit = 0; bit < 8; bit += 1) {
+      value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
+    }
+    table[i] = value >>> 0;
+  }
+  return table;
+})();
+
+function crc32(data: Buffer): number {
+  let value = 0xffffffff;
+  for (const byte of data) value = CRC_TABLE[(value ^ byte) & 0xff]! ^ (value >>> 8);
+  return (value ^ 0xffffffff) >>> 0;
+}
+
+/** 无压缩（stored）zip 打包：docx/xlsx 这类 XML 小包足够，避免引入 zip 依赖 */
+function buildStoredZip(entries: Array<{ name: string; data: Buffer }>): Buffer {
+  const localParts: Buffer[] = [];
+  const centralParts: Buffer[] = [];
+  let offset = 0;
+  for (const entry of entries) {
+    const nameBuf = Buffer.from(entry.name, 'utf8');
+    const crc = crc32(entry.data);
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4); // version needed
+    local.writeUInt16LE(0x0800, 6); // UTF-8 name flag
+    local.writeUInt16LE(0, 8); // stored
+    local.writeUInt32LE(crc, 14);
+    local.writeUInt32LE(entry.data.length, 18);
+    local.writeUInt32LE(entry.data.length, 22);
+    local.writeUInt16LE(nameBuf.length, 26);
+    localParts.push(local, nameBuf, entry.data);
+
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt16LE(20, 4);
+    central.writeUInt16LE(20, 6);
+    central.writeUInt16LE(0x0800, 8);
+    central.writeUInt16LE(0, 10);
+    central.writeUInt32LE(crc, 16);
+    central.writeUInt32LE(entry.data.length, 20);
+    central.writeUInt32LE(entry.data.length, 24);
+    central.writeUInt16LE(nameBuf.length, 28);
+    central.writeUInt32LE(offset, 42);
+    centralParts.push(central, nameBuf);
+    offset += local.length + nameBuf.length + entry.data.length;
+  }
+  const centralSize = centralParts.reduce((sum, part) => sum + part.length, 0);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(entries.length, 8);
+  end.writeUInt16LE(entries.length, 10);
+  end.writeUInt32LE(centralSize, 12);
+  end.writeUInt32LE(offset, 16);
+  return Buffer.concat([...localParts, ...centralParts, end]);
+}
+
+function buildDocxSample(): Buffer {
+  const paragraphs = [
+    '设备采购合同（示例文档，用于预览功能验证）',
+    '甲方：数据治理专项工作组    乙方：维保服务商',
+    '一、采购范围：档案库专用存储服务器一台，含三年维保服务。',
+    '二、交付要求：自合同生效之日起三十个自然日内完成到货、安装与验收。',
+    '三、验收标准：设备连续稳定运行七十二小时，无告警与降速记录。',
+    '四、本合同一式两份，双方各执一份，自双方签字盖章之日起生效。',
+  ];
+  const body = paragraphs
+    .map((text, index) =>
+      index === 0
+        ? '<w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="30"/></w:rPr><w:t xml:space="preserve">设备采购合同</w:t></w:r></w:p>'
+        : `<w:p><w:r><w:t xml:space="preserve">${text}</w:t></w:r></w:p>`,
+    )
+    .join('');
+  const documentXml = Buffer.from(
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${body}<w:sectPr/></w:body></w:document>`,
+    'utf8',
+  );
+  const contentTypes = Buffer.from(
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`,
+    'utf8',
+  );
+  const rels = Buffer.from(
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`,
+    'utf8',
+  );
+  return buildStoredZip([
+    { name: '[Content_Types].xml', data: contentTypes },
+    { name: '_rels/.rels', data: rels },
+    {
+      name: 'word/_rels/document.xml.rels',
+      data: Buffer.from(
+        `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>`,
+        'utf8',
+      ),
+    },
+    { name: 'word/document.xml', data: documentXml },
+  ]);
+}
+
+/** 手写最小 PDF 1.4（Helvetica 英文示例；中文预览需嵌入字体，不在示例范围） */
+function buildPdfSample(): Buffer {
+  const content = [
+    'BT /F1 18 Tf 60 780 Td (VaultDeck PDF Preview Sample) Tj ET',
+    'BT /F1 11 Tf 60 752 Td (Generated by rich demo seed - purchase & acceptance notes.) Tj ET',
+    'BT /F1 11 Tf 60 724 Td (Item 1: storage server, 3-year maintenance, 30-day delivery.) Tj ET',
+    'BT /F1 11 Tf 60 706 Td (Item 2: acceptance = 72h stable run without warnings.) Tj ET',
+    'BT /F1 11 Tf 60 688 Td (Item 3: contract in duplicate, effective on signature.) Tj ET',
+  ].join('\n');
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+    `<< /Length ${Buffer.byteLength(content, 'latin1')} >>\nstream\n${content}\nendstream`,
+  ];
+  let pdf = '%PDF-1.4\n';
+  const offsets: number[] = [];
+  objects.forEach((body, index) => {
+    offsets.push(Buffer.byteLength(pdf, 'latin1'));
+    pdf += `${index + 1} 0 obj\n${body}\nendobj\n`;
+  });
+  const xrefStart = Buffer.byteLength(pdf, 'latin1');
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  for (const offset of offsets) {
+    pdf += `${String(offset).padStart(10, '0')} 00000 n \n`;
+  }
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF\n`;
+  return Buffer.from(pdf, 'latin1');
+}
+
+async function buildXlsxSample(): Promise<Buffer> {
+  // exceljs 是 web 工作区依赖（hoist 到根 node_modules）；生产离线包不含它，
+  // 但 rich 演示只跑在开发环境（内存模式），因此这里动态 import 是安全的。
+  // CJS 包经 ESM 包装后 Workbook 可能在 default 或顶层，两种形态都兼容。
+  const mod = (await import('exceljs')) as unknown as Record<string, unknown>;
+  const ExcelJS = (mod.default ?? mod) as {
+    Workbook: new () => {
+      addWorksheet: (name: string) => {
+        columns: Array<{ header: string; key: string; width: number }>;
+        addRow: (row: Record<string, string>) => void;
+      };
+      xlsx: { writeBuffer: () => Promise<ArrayBuffer> };
+    };
+  };
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet('评审记录');
+  sheet.columns = [
+    { header: '日期', key: 'date', width: 14 },
+    { header: '评审事项', key: 'item', width: 28 },
+    { header: '结论', key: 'result', width: 12 },
+    { header: '参与人', key: 'owner', width: 12 },
+  ];
+  ['2026-11-03', '2026-11-10', '2026-11-17'].forEach((date, index) => {
+    sheet.addRow({
+      date,
+      item: `设备采购与维保服务第 ${index + 1} 轮评审`,
+      result: index === 2 ? '通过' : '有条件通过',
+      owner: ['王工', '李工', '张工'][index]!,
+    });
+  });
+  return Buffer.from(await workbook.xlsx.writeBuffer());
+}
+
 function shiftDate(days: number): string {
   const date = new Date(BASE_DATE.getTime() - days * 86400000);
   return date.toISOString().slice(0, 10);
@@ -203,6 +379,7 @@ export async function seedRichDemo(): Promise<void> {
   const started = Date.now();
   let fileIndex = 0;
   const projectIds: Record<string, string> = {};
+  const foldersOf: Record<string, Array<{ folderId: string }>> = {};
 
   for (const spec of PROJECTS) {
     const project = await store.createProject({ projectCode: spec.code, projectName: spec.name });
@@ -221,6 +398,7 @@ export async function seedRichDemo(): Promise<void> {
         }),
       );
     }
+    foldersOf[spec.code] = folders;
 
     for (const theme of spec.themes) {
       for (let variant = 0; variant < 2; variant += 1) {
@@ -321,4 +499,51 @@ export async function seedRichDemo(): Promise<void> {
     filesTotal: filesCreated,
     durationMs: Date.now() - started,
   });
+
+  // ---------- Office/PDF 预览样例（RICH-03 合同文本文件夹） ----------
+  // docx/xlsx/pdf 各一份：给前端预览弹层（docx-preview / ExcelJS / 浏览器原生 PDF）真实样本。
+  const contractFolder = foldersOf['RICH-03']?.[0];
+  if (!contractFolder) {
+    logger.warn('rich_demo.preview_samples_skipped', { reason: 'RICH-03 folder missing' });
+    return;
+  }
+  const previewSamples: Array<{ fileName: string; contentType: string; data: Buffer }> = [
+    {
+      fileName: 'RICH-03_设备采购合同_v1.docx',
+      contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      data: buildDocxSample(),
+    },
+    {
+      fileName: 'RICH-03_采购说明_v1.pdf',
+      contentType: 'application/pdf',
+      data: buildPdfSample(),
+    },
+    {
+      fileName: 'RICH-03_评审记录表_v1.xlsx',
+      contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      data: await buildXlsxSample(),
+    },
+  ];
+  for (const sample of previewSamples) {
+    const sha256 = createHash('sha256').update(sample.data).digest('hex');
+    if (!(await objectStorage.objectExists(sha256))) {
+      const sessionId = randomUUID();
+      await objectStorage.saveChunk(sessionId, 0, sample.data);
+      await objectStorage.mergeChunks(sessionId, 1, sha256, sample.data.byteLength);
+      await objectStorage.cleanupSession(sessionId);
+      objectsWritten += 1;
+    }
+    await store.addFile({
+      projectId: projectIds['RICH-03']!,
+      folderId: contractFolder.folderId,
+      fileName: sample.fileName,
+      sizeBytes: sample.data.byteLength,
+      contentType: sample.contentType,
+      uploaderId: leader.userId,
+      sha256,
+      objectPath: `objects/${sha256.slice(0, 2)}/${sha256}.bin`,
+    });
+    filesCreated += 1;
+  }
+  logger.info('rich_demo.preview_samples_seeded', { count: previewSamples.length });
 }
