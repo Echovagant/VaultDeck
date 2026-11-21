@@ -61,26 +61,40 @@ export class AgentController {
     @Headers('authorization') authorization?: string,
   ) {
     const user = await requireUser(authorization);
-    if (user.role !== 'LEADER') {
-      throw new DomainError('AUTH', 'VD-AUTH-404', '无权访问', { status: 404 });
-    }
+    const isLeader = user.role === 'LEADER';
 
-    const projectIds = body.scopeAll ? [] : (body.projectIds ?? []);
-    if (!body.scopeAll && projectIds.length === 0) {
+    // 权限上限：非领队创建的授权不得高于本人权限
+    //   队员 → 只能建队员档；执行领队 → 本档或队员档
+    //   范围 → 只能是自己参与的项目，不允许「全部项目」
+    let role = body.role;
+    if (!isLeader && role === 'DEPUTY_LEADER' && user.role === 'MEMBER') {
+      throw new DomainError('VAL', 'VD-VAL-012', '队员只能创建队员档位的授权', { status: 400 });
+    }
+    let scopeAll = body.scopeAll;
+    let projectIds = scopeAll ? [] : (body.projectIds ?? []);
+    if (!isLeader) {
+      if (scopeAll) {
+        throw new DomainError('VAL', 'VD-VAL-012', '仅领队可创建全部项目范围的授权', { status: 400 });
+      }
+      const mine = await store.memberProjectIds(user.userId);
+      const outside = projectIds.filter((id) => !mine.includes(id));
+      if (outside.length > 0) {
+        throw new DomainError('VAL', 'VD-VAL-012', '授权范围超出你参与的项目', { status: 400 });
+      }
+    }
+    if (!scopeAll && projectIds.length === 0) {
       throw new DomainError('VAL', 'VD-VAL-001', '指定范围时至少选择一个项目', { status: 400 });
     }
-    if (!body.scopeAll) {
+    if (scopeAll) {
       const known = new Set((await store.listProjects()).map((p) => p.projectId));
-      const unknown = projectIds.filter((id) => !known.has(id));
-      if (unknown.length > 0) {
-        throw new DomainError('VAL', 'VD-VAL-012', '授权范围里有不存在的项目', { status: 400 });
-      }
+      // scopeAll 时 projectIds 为空，这里兜底校验防御直传
+      projectIds = projectIds.filter((id) => known.has(id));
     }
 
     const { view, secret } = await store.createAgentGrant({
       name: body.name.trim(),
-      role: body.role,
-      scopeAll: body.scopeAll,
+      role,
+      scopeAll,
       projectIds,
       readOnly: body.readOnly,
       createdBy: user.userId,
@@ -92,19 +106,23 @@ export class AgentController {
       objectId: view.grantId,
       result: 'success',
       // 审计红线：授权码明文不进日志
-      detail: JSON.stringify({ name: view.name, role: view.role, readOnly: view.readOnly, scopeAll: view.scopeAll }),
+      detail: JSON.stringify({
+        name: view.name,
+        role: view.role,
+        readOnly: view.readOnly,
+        scopeAll: view.scopeAll,
+        creatorRole: user.role,
+      }),
     });
-    // 授权码明文只此一次返回给领队，之后库里只有 hash
+    // 授权码明文只此一次返回，之后库里只有 hash
     return { ...view, code: secret.code, codeExpiresAt: secret.expiresAt };
   }
 
   @Get('grants')
   async listGrants(@Headers('authorization') authorization?: string): Promise<AgentGrantView[]> {
     const user = await requireUser(authorization);
-    if (user.role !== 'LEADER') {
-      throw new DomainError('AUTH', 'VD-AUTH-404', '无权访问', { status: 404 });
-    }
-    return store.listAgentGrants();
+    // 领队看全部；其他角色只看自己创建的授权
+    return store.listAgentGrants(user.role === 'LEADER' ? undefined : user.userId);
   }
 
   @Patch('grants/:grantId')
@@ -114,8 +132,13 @@ export class AgentController {
     @Headers('authorization') authorization?: string,
   ) {
     const user = await requireUser(authorization);
-    if (user.role !== 'LEADER') {
-      throw new DomainError('AUTH', 'VD-AUTH-404', '无权访问', { status: 404 });
+    const isLeader = user.role === 'LEADER';
+    // 非领队只能撤销自己创建的授权；不存在于本人清单 = 无权操作
+    if (!isLeader) {
+      const own = (await store.listAgentGrants(user.userId)).some((g) => g.grantId === grantId);
+      if (!own) {
+        throw new DomainError('AUTH', 'VD-AUTH-404', '授权不存在或无权操作', { status: 404 });
+      }
     }
 
     const revoked = await store.revokeAgentGrant(grantId);

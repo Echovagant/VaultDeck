@@ -475,10 +475,13 @@ export class PgStore implements StorePort {
     };
   }
 
-  async listAgentGrants(): Promise<AgentGrantView[]> {
-    const result = await this.pool.query<AgentGrantRow>(
-      'SELECT * FROM agent_grant ORDER BY created_at DESC',
-    );
+  async listAgentGrants(createdBy?: string): Promise<AgentGrantView[]> {
+    const result = createdBy
+      ? await this.pool.query<AgentGrantRow>(
+          'SELECT * FROM agent_grant WHERE created_by = $1 ORDER BY created_at DESC',
+          [createdBy],
+        )
+      : await this.pool.query<AgentGrantRow>('SELECT * FROM agent_grant ORDER BY created_at DESC');
     return result.rows.map((row) => this.toGrantView(mapAgentGrant(row)));
   }
 

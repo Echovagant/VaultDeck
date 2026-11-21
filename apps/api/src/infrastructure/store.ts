@@ -29,7 +29,14 @@ export { TRASH_RETENTION_DAYS };
 export const storeKind = usePostgres ? 'postgres' : 'memory';
 
 export async function prepareStore(): Promise<void> {
-  if (!activePool) return;
+  // 富化演示数据：VD_BOOTSTRAP_DEMO=rich 且内存模式时，在基础 demo 之上追加足量语料
+  if (!activePool) {
+    if (process.env['VD_BOOTSTRAP_DEMO'] === 'rich') {
+      const { seedRichDemo } = await import('./memory/rich-demo');
+      await seedRichDemo();
+    }
+    return;
+  }
 
   // 连接失败必须显式暴露：吞掉会把「连不上」误报成「未初始化」，排障时误导方向
   const migrationTable = await activePool

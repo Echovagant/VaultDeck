@@ -63,7 +63,8 @@ const routes = [
     path: '/admin',
     name: 'admin',
     component: () => import('@/pages/admin/index.vue'),
-    meta: { roles: ['LEADER'] satisfies Role[] },
+    // 全角色可进：账号管理面板仅领队可见，Agent 接入各角色按权限差异化
+    meta: { roles: ['LEADER', 'DEPUTY_LEADER', 'MEMBER'] satisfies Role[] },
   },
 ];
 

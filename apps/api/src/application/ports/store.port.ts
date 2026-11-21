@@ -281,7 +281,8 @@ export interface StorePort {
     view: AgentGrantView;
     secret: AgentGrantSecret;
   }>;
-  listAgentGrants(): Promise<AgentGrantView[]>;
+  /** createdBy 省略返回全部（领队）；传入则只返回该用户创建的授权 */
+  listAgentGrants(createdBy?: string): Promise<AgentGrantView[]>;
   revokeAgentGrant(grantId: string): Promise<AgentGrantView | null>;
   /** 一次性授权码换 token；无效 / 已用 / 过期 / 已撤销返回 null */
   exchangeAgentCode(code: string): Promise<AgentTokenIssued | null>;

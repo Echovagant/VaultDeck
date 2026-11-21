@@ -296,8 +296,9 @@ class MemoryStore implements StorePort {
     };
   }
 
-  async listAgentGrants(): Promise<AgentGrantView[]> {
+  async listAgentGrants(createdBy?: string): Promise<AgentGrantView[]> {
     return [...this.agentGrants.values()]
+      .filter((record) => !createdBy || record.createdBy === createdBy)
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
       .map((record) => this.toGrantView(record));
   }

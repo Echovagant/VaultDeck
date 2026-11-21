@@ -52,7 +52,7 @@
               <template #icon><SettingOutlined /></template>
               <span class="vd-nav-item"><span class="vd-nav-index">06</span>设置</span>
             </a-menu-item>
-            <a-menu-item v-if="isLeader" key="/admin">
+            <a-menu-item key="/admin">
               <template #icon><TeamOutlined /></template>
               <span class="vd-nav-item"><span class="vd-nav-index">07</span>后台</span>
             </a-menu-item>

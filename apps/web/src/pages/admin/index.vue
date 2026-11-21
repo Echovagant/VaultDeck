@@ -8,11 +8,11 @@
       </div>
       <div class="vd-page-actions">
         <a-button @click="openGrantCreate">新建 Agent 授权</a-button>
-        <a-button type="primary" @click="openCreate">新建账号</a-button>
+        <a-button v-if="isLeader" type="primary" @click="openCreate">新建账号</a-button>
       </div>
     </header>
 
-    <div class="vd-panel">
+    <div v-if="isLeader" class="vd-panel">
       <h2 class="panel-title">账号管理</h2>
       <a-table
         :columns="columns"
@@ -56,11 +56,13 @@
       </a-table>
     </div>
 
-    <div class="vd-panel">
-      <h2 class="panel-title">Agent 接入</h2>
-      <p class="panel-note">
-        给外部 Agent（Skill / MCP）发授权码：Agent 用授权码换访问令牌，按选定角色与项目范围访问，可随时撤销。
-      </p>
+      <div class="vd-panel">
+        <h2 class="panel-title">Agent 接入</h2>
+        <p class="panel-note">
+          {{ isLeader
+            ? '给外部 Agent（Skill / MCP）发授权码：Agent 用授权码换访问令牌，按选定角色与项目范围访问，可随时撤销。'
+            : '为外部 Agent（Skill / MCP）创建你权限范围内的授权：范围只能是你参与的项目，档位不高于你的角色，可随时撤销。' }}
+        </p>
       <a-table
         :columns="grantColumns"
         :data-source="agentGrants"
@@ -154,20 +156,25 @@
         <a-form-item label="角色档位">
           <a-select v-model:value="grantForm.role" :options="grantRoleOptions" />
           <p class="settings-hint">
-            执行领队档可读范围内全部文件；队员档只能读到它自己上传的文件。
+            {{ isLeader
+              ? '执行领队档可读范围内全部文件；队员档只能读到它自己上传的文件。'
+              : '授权档位不高于你的角色；范围只能是你参与的项目。' }}
           </p>
         </a-form-item>
         <a-form-item label="项目范围">
-          <a-radio-group v-model:value="grantForm.scopeMode">
+          <a-radio-group v-if="isLeader" v-model:value="grantForm.scopeMode">
             <a-radio value="all">全部项目</a-radio>
             <a-radio value="specific">指定项目</a-radio>
           </a-radio-group>
+          <span v-if="isLeader && grantForm.scopeMode === 'all'" class="settings-hint">
+            对全部项目生效（含以后新建的项目）。
+          </span>
           <a-select
-            v-if="grantForm.scopeMode === 'specific'"
+            v-if="!isLeader || grantForm.scopeMode === 'specific'"
             v-model:value="grantForm.projectIds"
             mode="multiple"
             :options="projectOptions"
-            placeholder="选择可访问的项目"
+            :placeholder="isLeader ? '选择可访问的项目' : '选择你参与的项目'"
             style="margin-top: 8px"
           />
         </a-form-item>
@@ -232,6 +239,7 @@ interface ProjectOption {
 }
 
 const session = useSessionStore();
+const isLeader = computed(() => session.user?.role === 'LEADER');
 const users = ref<UserItem[]>([]);
 const agentGrants = ref<AgentGrant[]>([]);
 const projects = ref<ProjectOption[]>([]);
@@ -263,10 +271,13 @@ const roleOptions = [
   { label: '队员', value: 'MEMBER' },
 ];
 
-const grantRoleOptions = [
-  { label: '执行领队（读范围内全部文件）', value: 'DEPUTY_LEADER' },
-  { label: '队员（只读自己上传的）', value: 'MEMBER' },
-];
+const grantRoleOptions = computed(() => {
+  const deputyOption = { label: '执行领队（读范围内全部文件）', value: 'DEPUTY_LEADER' };
+  const memberOption = { label: '队员（只读自己上传的）', value: 'MEMBER' };
+  if (session.user?.role === 'MEMBER') return [memberOption];
+  if (session.user?.role === 'LEADER') return [deputyOption, memberOption];
+  return [deputyOption, memberOption];
+});
 
 const columns = [
   { title: '用户名', dataIndex: 'username', key: 'username', width: 180 },
@@ -435,7 +446,8 @@ async function toggle(item: UserItem, status: 'active' | 'disabled'): Promise<vo
 
 function openGrantCreate(): void {
   grantForm.name = '';
-  grantForm.role = 'DEPUTY_LEADER';
+  // 队员只能建队员档；范围默认指向自己可见的项目清单
+  grantForm.role = session.user?.role === 'MEMBER' ? 'MEMBER' : 'DEPUTY_LEADER';
   grantForm.scopeMode = 'all';
   grantForm.projectIds = [];
   grantForm.readOnly = true;
@@ -459,7 +471,7 @@ async function submitGrantCreate(): Promise<void> {
       body: JSON.stringify({
         name: grantForm.name.trim(),
         role: grantForm.role,
-        scopeAll: grantForm.scopeMode === 'all',
+        scopeAll: isLeader && grantForm.scopeMode === 'all',
         projectIds: grantForm.scopeMode === 'all' ? [] : grantForm.projectIds,
         readOnly: grantForm.readOnly,
       }),
@@ -504,7 +516,11 @@ onMounted(() => {
 </script>
 
 <style scoped>
-/* 后台页两个面板纵向叠放，补面板间距 */
+/* 后台页两个面板纵向叠放，补面板间距；面板内容与边框留出呼吸空间 */
+.vd-panel {
+  padding: 14px 16px 16px;
+}
+
 .vd-panel + .vd-panel {
   margin-top: 16px;
 }
@@ -516,7 +532,7 @@ onMounted(() => {
 }
 
 .panel-title {
-  margin: 0 0 4px;
+  margin: 0 0 8px;
   font-family: var(--vd-font-display);
   font-size: 15px;
   font-weight: 600;

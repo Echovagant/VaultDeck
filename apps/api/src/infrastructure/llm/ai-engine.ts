@@ -42,9 +42,10 @@ export function resolveAiConfig(
   return effort ? { apiKey, baseUrl, model, effort } : { apiKey, baseUrl, model };
 }
 
-/** 带 20 秒超时的 fetch 注入：默认 fetch 没有超时，模型不回话就永远挂着 */
+/** 带 60 秒超时的 fetch 注入：默认 fetch 没有超时，模型不回话就永远挂着。
+ *  实测 max 档思考 + JSON 输出在慢时段会超过 20s（交接期定值被证伪），提到 60s。 */
 const timeoutFetch: ChatOptions['fetchImpl'] = (url, init) =>
-  fetch(url, { ...(init as RequestInit), signal: AbortSignal.timeout(20_000) });
+  fetch(url, { ...(init as RequestInit), signal: AbortSignal.timeout(60_000) });
 
 /** 把配置包成「提示词 → 回话正文」的对话函数（parse-natural-search 的 ChatFn 形态） */
 export function chatWith(config: ResolvedAiConfig): (prompt: string) => Promise<string> {
