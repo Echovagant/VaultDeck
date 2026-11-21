@@ -162,10 +162,16 @@ async function renderDocx(buffer: ArrayBuffer): Promise<void> {
   if (!container) throw new Error('预览容器未就绪');
   container.innerHTML = '';
   const { renderAsync } = await import('docx-preview');
+  // 连续文档流模式：不模拟 A4 纸张（纸张模式在宽弹窗里两侧大片留白），
+  // 忽略文档固定页宽页高，内容像网页一样铺满弹窗。
   await renderAsync(buffer, container, undefined, {
-    inWrapper: true,
-    breakPages: true,
+    inWrapper: false,
+    breakPages: false,
+    ignoreWidth: true,
+    ignoreHeight: true,
     ignoreLastRenderedPageBreak: true,
+    renderHeaders: false,
+    renderFooters: false,
   });
 }
 
@@ -307,14 +313,21 @@ watch(
 
 .docx-container {
   max-height: 65vh;
-  padding: 8px;
+  padding: 20px 28px;
   overflow: auto;
-  background: #f4f4f4;
+  background: var(--vd-surface);
+  border: 1px solid var(--vd-border);
+  border-radius: 6px;
 }
 
 .docx-container :deep(.docx-wrapper) {
   padding: 0;
   background: transparent;
+}
+
+.docx-container :deep(p) {
+  margin: 0 0 10px;
+  line-height: 1.9;
 }
 
 .sheet-container {
