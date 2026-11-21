@@ -3,10 +3,13 @@ import { Body, Controller, Get, Headers, HttpCode, Patch, Post } from '@nestjs/c
 import { findProvider } from '@vaultdeck/llm';
 
 import type { AiSettingsPatchInput } from '../../../application/ports/store.port';
+import { classifyFiles, toClassifyInputs } from '../../../application/use-cases/classify-files';
 import { parseNaturalSearch } from '../../../application/use-cases/parse-natural-search';
+import { isSummarizable, summarizeFile } from '../../../application/use-cases/summarize-file';
 import { encryptionEnabled } from '../../../infrastructure/crypto/at-rest';
 import { logger } from '../../../infrastructure/logging/logger';
 import { aiProvidersCatalog, chatWith, pullModelIds, resolveAiConfig } from '../../../infrastructure/llm/ai-engine';
+import { objectStorage } from '../../../infrastructure/memory/upload-sessions';
 import { store, storeKind } from '../../../infrastructure/store';
 import { DomainError } from '../errors/problem-details';
 import { StrictBodyPipe } from '../validation/strict-body.pipe';
@@ -47,6 +50,36 @@ const parseSearchSchema = {
     query: { type: 'string', minLength: 1, maxLength: 300 },
   },
 };
+
+interface FileIdBody {
+  fileId: string;
+}
+
+const fileIdSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['fileId'],
+  properties: {
+    fileId: { type: 'string', format: 'uuid' },
+  },
+};
+
+interface ProjectIdBody {
+  projectId: string;
+}
+
+const projectIdSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['projectId'],
+  properties: {
+    projectId: { type: 'string', format: 'uuid' },
+  },
+};
+
+const SUMMARY_INPUT_LIMIT = 512 * 1024;
+const CLASSIFY_EXCERPT_BYTES = 300;
+const CLASSIFY_BATCH_LIMIT = 60;
 
 @Controller('ai')
 export class AiController {
@@ -171,5 +204,130 @@ export class AiController {
         message: error instanceof Error ? error.message : String(error),
       });
     });
+  }
+
+  /** 读一个文件的明文片段（text 类）；对象缺失等异常返回 null */
+  private async readTextExcerpt(
+    objectPath: string,
+    limitBytes: number,
+  ): Promise<string | null> {
+    try {
+      const stream = await objectStorage.openRange(objectPath, 0, limitBytes - 1);
+      const chunks: Uint8Array[] = [];
+      for await (const chunk of stream) chunks.push(chunk);
+      return Buffer.concat(chunks).toString('utf8');
+    } catch {
+      return null;
+    }
+  }
+
+  @Post('summarize')
+  @HttpCode(200)
+  async summarize(
+    @Body(new StrictBodyPipe<FileIdBody>(fileIdSchema)) body: FileIdBody,
+    @Headers('authorization') authorization?: string,
+  ) {
+    const user = await requireUser(authorization);
+    const file = await store.getFile(body.fileId);
+    if (!file || !(await store.canReadFile(user, file))) {
+      throw new DomainError('AUTH', 'VD-AUTH-404', '文件不存在', { status: 404 });
+    }
+    if (!file.objectPath) {
+      throw new DomainError('AUTH', 'VD-AUTH-404', '文件内容不存在', { status: 404 });
+    }
+    if (!isSummarizable(file.fileName, file.contentType)) {
+      throw new DomainError('SYS', 'VD-SYS-501', '该文件类型暂不支持 AI 总结（当前支持纯文本类）', {
+        status: 415,
+      });
+    }
+
+    const settings = await store.getAiSettings();
+    const config = resolveAiConfig(settings, await store.aiApiKey());
+    if (!config) {
+      throw new DomainError('VAL', 'VD-AI-409', '请先在设置页配置 AI 服务', { status: 409 });
+    }
+
+    const size = await objectStorage.plaintextSize(file.objectPath).catch(() => 0);
+    const limit = Math.min(size, SUMMARY_INPUT_LIMIT);
+    const content = (await this.readTextExcerpt(file.objectPath, limit)) ?? '';
+    if (!content.trim()) {
+      throw new DomainError('SYS', 'VD-SYS-502', '文件内容为空或不可读', { status: 502 });
+    }
+
+    const result = await summarizeFile(file.fileName, content, chatWith(config), (error) => {
+      logger.warn('ai.summarize_failed', {
+        message: error instanceof Error ? error.message : String(error),
+      });
+    });
+    if (!result) {
+      throw new DomainError('SYS', 'VD-SYS-502', 'AI 总结暂时不可用，请稍后重试', { status: 502 });
+    }
+
+    await store.recordAudit({
+      actor: user,
+      action: 'ai.summarize',
+      objectType: 'file',
+      objectId: file.fileId,
+      result: 'success',
+      detail: file.fileName,
+    });
+    return result;
+  }
+
+  @Post('classify')
+  @HttpCode(200)
+  async classify(
+    @Body(new StrictBodyPipe<ProjectIdBody>(projectIdSchema)) body: ProjectIdBody,
+    @Headers('authorization') authorization?: string,
+  ) {
+    const user = await requireUser(authorization);
+    if (!(await store.canAccessProject(user, body.projectId))) {
+      throw new DomainError('AUTH', 'VD-AUTH-404', '项目不存在', { status: 404 });
+    }
+
+    const settings = await store.getAiSettings();
+    const config = resolveAiConfig(settings, await store.aiApiKey());
+    if (!config) {
+      // 分类是建议性功能，未配置时降级为空建议而不是报错
+      return { suggestions: [], notice: 'AI 服务未配置，请先用关键词与筛选条件' };
+    }
+
+    const files = (await store.listFiles(body.projectId)).filter((f) => f.status === 'active');
+    if (files.length === 0) {
+      return { suggestions: [], notice: null };
+    }
+
+    const limited = files.slice(0, CLASSIFY_BATCH_LIMIT);
+    const inputs = [];
+    for (const file of limited) {
+      const excerpt =
+        file.objectPath && isSummarizable(file.fileName, file.contentType)
+          ? await this.readTextExcerpt(file.objectPath, CLASSIFY_EXCERPT_BYTES)
+          : null;
+      inputs.push({
+        fileId: file.fileId,
+        fileName: file.fileName,
+        excerpt,
+      });
+    }
+
+    const suggestions = await classifyFiles(toClassifyInputs(inputs), chatWith(config), (error) => {
+      logger.warn('ai.classify_failed', {
+        message: error instanceof Error ? error.message : String(error),
+      });
+    });
+    if (suggestions === null) {
+      return { suggestions: [], notice: 'AI 分类暂时不可用，请稍后重试' };
+    }
+
+    await store.recordAudit({
+      actor: user,
+      action: 'ai.classify',
+      objectType: 'project',
+      objectId: body.projectId,
+      result: 'success',
+      detail: JSON.stringify({ scanned: inputs.length, suggested: suggestions.length }),
+    });
+    return { suggestions, notice: files.length > CLASSIFY_BATCH_LIMIT ? `文件较多，本次仅分析前 ${CLASSIFY_BATCH_LIMIT} 个` : null };
   }
 }

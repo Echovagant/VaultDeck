@@ -309,7 +309,60 @@ const TOOLS = [
       additionalProperties: false,
     },
   },
+  {
+    name: 'ai_summarize_file',
+    description:
+      'AI 总结一个文件的内容（当前支持纯文本类：txt/md/csv/log/json），返回摘要与关键词。模型能力由 VaultDeck 服务端提供。',
+    inputSchema: {
+      type: 'object',
+      required: ['fileId'],
+      properties: {
+        fileId: { type: 'string', description: '文件 id（search_files / ai_find_files 可得）' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'ai_classify_project',
+    description:
+      'AI 对一个项目内的文件批量给出分类建议（类目名 + 理由），只提议不自动落库；单次最多分析 60 个文件。',
+    inputSchema: {
+      type: 'object',
+      required: ['projectId'],
+      properties: {
+        projectId: { type: 'string', description: '项目 id（list_projects 可得）' },
+      },
+      additionalProperties: false,
+    },
+  },
 ];
+
+async function toolAiSummarizeFile(args) {
+  const fileId = args.fileId;
+  if (!fileId) throw new Error('fileId 必填（search_files / ai_find_files 可得）');
+  const result = await api('/ai/summarize', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ fileId }),
+  });
+  return `摘要：${result.summary}\n关键词：${(result.keywords ?? []).join('、') || '（无）'}`;
+}
+
+async function toolAiClassifyProject(args) {
+  const projectId = args.projectId;
+  if (!projectId) throw new Error('projectId 必填（list_projects 可得）');
+  const result = await api('/ai/classify', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ projectId }),
+  });
+  const notice = result.notice ? `提示：${result.notice}\n` : '';
+  if (!result.suggestions || result.suggestions.length === 0) return `${notice}（没有分类建议）`;
+  const lines = result.suggestions.map(
+    (s) => `${s.fileId}  ${s.fileName} → ${s.suggestedCategory}（${s.reason}）`,
+  );
+  return `${notice}共 ${result.suggestions.length} 条分类建议：\n${lines.join('\n')}`;
+}
 
 const HANDLERS = {
   list_projects: toolListProjects,
@@ -317,6 +370,8 @@ const HANDLERS = {
   ai_find_files: toolAiFindFiles,
   download_file: toolDownloadFile,
   upload_file: toolUploadFile,
+  ai_summarize_file: toolAiSummarizeFile,
+  ai_classify_project: toolAiClassifyProject,
 };
 
 // ---------- MCP stdio 协议（JSON-RPC 2.0，按行分帧） ----------

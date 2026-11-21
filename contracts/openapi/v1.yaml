@@ -969,6 +969,42 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ParseSearchResult' }
         '400': { $ref: '#/components/responses/BadRequest' }
+  /ai/summarize:
+    post:
+      tags: [ai]
+      operationId: summarizeFile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AiSummarizeRequest' }
+      responses:
+        '200':
+          description: AI 摘要与关键词
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AiSummaryResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '415': { $ref: '#/components/responses/BadRequest' }
+  /ai/classify:
+    post:
+      tags: [ai]
+      operationId: classifyProjectFiles
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AiClassifyRequest' }
+      responses:
+        '200':
+          description: 分类建议清单（AI 提议，不自动落库）
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AiClassifyResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /agent/grants:
     post:
       tags: [agent]
@@ -1778,3 +1814,37 @@ components:
         scopeAll: { type: boolean }
         projectIds: { type: array, items: { type: string, format: uuid } }
         readOnly: { type: boolean }
+    AiSummarizeRequest:
+      type: object
+      additionalProperties: false
+      required: [fileId]
+      properties:
+        fileId: { type: string, format: uuid }
+    AiSummaryResult:
+      type: object
+      required: [summary, keywords]
+      properties:
+        summary: { type: string, description: 不超过 200 字的内容摘要 }
+        keywords: { type: array, items: { type: string }, maxItems: 6 }
+    AiClassifyRequest:
+      type: object
+      additionalProperties: false
+      required: [projectId]
+      properties:
+        projectId: { type: string, format: uuid }
+    AiClassifySuggestion:
+      type: object
+      required: [fileId, fileName, suggestedCategory, reason]
+      properties:
+        fileId: { type: string, format: uuid }
+        fileName: { type: string }
+        suggestedCategory: { type: string, description: AI 建议的类目名 }
+        reason: { type: string, description: 一句话理由 }
+    AiClassifyResult:
+      type: object
+      required: [suggestions]
+      properties:
+        suggestions:
+          type: array
+          items: { $ref: '#/components/schemas/AiClassifySuggestion' }
+        notice: { type: [string, 'null'], description: AI 未配置或解析失败时的降级提示 }

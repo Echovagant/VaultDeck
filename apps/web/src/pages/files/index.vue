@@ -109,6 +109,7 @@
             <a-select v-model:value="typeFilter" style="width: 130px" :options="typeOptions" />
             <a-button @click="resetFilter">重置</a-button>
             <a-button type="primary" @click="applyFilter">搜索</a-button>
+            <a-button :loading="aiClassifyLoading" @click="aiClassify">AI 分类建议</a-button>
             <span class="files-count">
               文件夹 {{ visibleFolders.length }} 个 · 文件 {{ visibleFiles.length }} 个
             </span>
@@ -194,6 +195,14 @@
                 type="link"
                 size="small"
                 :disabled="file.hasContent === false"
+                @click="aiSummarize(file)"
+              >
+                AI 总结
+              </a-button>
+              <a-button
+                type="link"
+                size="small"
+                :disabled="file.hasContent === false"
                 @click="download(file)"
               >
                 下载
@@ -230,6 +239,13 @@
                   @click="openPreview(record)"
                 >
                   预览
+                </a-button>
+                <a-button
+                  type="link"
+                  :disabled="record.hasContent === false"
+                  @click="aiSummarize(record)"
+                >
+                  AI 总结
                 </a-button>
                 <a-button
                   type="link"
@@ -320,6 +336,54 @@
             </template>
           </template>
         </a-table>
+      </a-modal>
+
+      <a-modal
+        v-model:open="aiSummaryVisible"
+        title="AI 总结"
+        :footer="null"
+        :destroy-on-close="true"
+      >
+        <a-spin :spinning="aiSummaryLoading">
+          <p class="ai-target">{{ aiSummaryTarget?.fileName }}</p>
+          <p class="ai-summary-text">{{ aiSummary?.summary ?? '（无摘要）' }}</p>
+          <div v-if="aiSummary?.keywords?.length" class="ai-keywords">
+            <a-tag v-for="word in aiSummary.keywords" :key="word">{{ word }}</a-tag>
+          </div>
+        </a-spin>
+      </a-modal>
+
+      <a-modal
+        v-model:open="aiClassifyVisible"
+        title="AI 分类建议"
+        :footer="null"
+        width="720px"
+        :destroy-on-close="true"
+      >
+        <a-spin :spinning="aiClassifyLoading">
+          <a-alert
+            v-if="aiClassifyNotice"
+            type="info"
+            show-icon
+            :message="aiClassifyNotice"
+            style="margin-bottom: 12px"
+          />
+          <p class="settings-hint">建议由 AI 生成，仅作整理参考；应用类目请在「分类」页操作。</p>
+          <a-table
+            :columns="aiClassifyColumns"
+            :data-source="aiSuggestions"
+            :pagination="false"
+            row-key="fileId"
+            size="small"
+            :scroll="{ y: 360 }"
+          >
+            <template #bodyCell="{ column, record }">
+              <template v-if="column.key === 'suggestedCategory'">
+                <a-tag color="processing">{{ record.suggestedCategory }}</a-tag>
+              </template>
+            </template>
+          </a-table>
+        </a-spin>
       </a-modal>
     </main>
   </div>
@@ -412,6 +476,74 @@ const tabsStore = useTabsStore();
 const isNarrow = useMediaQuery('(max-width: 760px)');
 const session = useSessionStore();
 const projectId = String(route.params.projectId ?? '');
+
+// ---------- AI 总结 / AI 分类建议 ----------
+
+interface AiSummary {
+  summary: string;
+  keywords: string[];
+}
+
+interface AiSuggestion {
+  fileId: string;
+  fileName: string;
+  suggestedCategory: string;
+  reason: string;
+}
+
+const aiSummaryVisible = ref(false);
+const aiSummaryLoading = ref(false);
+const aiSummary = ref<AiSummary | null>(null);
+const aiSummaryTarget = ref<FileItem | null>(null);
+
+const aiClassifyVisible = ref(false);
+const aiClassifyLoading = ref(false);
+const aiSuggestions = ref<AiSuggestion[]>([]);
+const aiClassifyNotice = ref<string | null>(null);
+
+const aiClassifyColumns = [
+  { title: '文件', dataIndex: 'fileName', key: 'fileName' },
+  { title: '建议类目', key: 'suggestedCategory', width: 130 },
+  { title: '理由', dataIndex: 'reason' },
+];
+
+async function aiSummarize(file: FileItem): Promise<void> {
+  aiSummaryTarget.value = file;
+  aiSummary.value = null;
+  aiSummaryVisible.value = true;
+  aiSummaryLoading.value = true;
+  try {
+    aiSummary.value = await api<AiSummary>('/ai/summarize', {
+      method: 'POST',
+      body: JSON.stringify({ fileId: file.fileId }),
+    });
+  } catch (error) {
+    aiSummaryVisible.value = false;
+    message.error(error instanceof ApiError ? error.message : 'AI 总结失败');
+  } finally {
+    aiSummaryLoading.value = false;
+  }
+}
+
+async function aiClassify(): Promise<void> {
+  aiClassifyVisible.value = true;
+  aiClassifyLoading.value = true;
+  aiSuggestions.value = [];
+  aiClassifyNotice.value = null;
+  try {
+    const result = await api<{ suggestions: AiSuggestion[]; notice: string | null }>('/ai/classify', {
+      method: 'POST',
+      body: JSON.stringify({ projectId }),
+    });
+    aiSuggestions.value = result.suggestions ?? [];
+    aiClassifyNotice.value = result.notice;
+  } catch (error) {
+    aiClassifyVisible.value = false;
+    message.error(error instanceof ApiError ? error.message : 'AI 分类失败');
+  } finally {
+    aiClassifyLoading.value = false;
+  }
+}
 
 const projectName = ref('');
 const folders = ref<FolderItem[]>([]);
@@ -1114,6 +1246,23 @@ onMounted(async () => {
 .files-panel :deep(.ant-tabs-nav) {
   margin: 0;
   padding: 0 14px;
+}
+
+.ai-target {
+  margin: 0 0 10px;
+  color: var(--vd-text-secondary);
+  font-size: 12px;
+}
+
+.ai-summary-text {
+  margin: 0 0 12px;
+  line-height: 1.9;
+}
+
+.ai-keywords {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .files-toolbar {

@@ -708,6 +708,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ai/summarize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["summarizeFile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/classify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["classifyProjectFiles"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/agent/grants": {
         parameters: {
             query?: never;
@@ -1295,6 +1327,33 @@ export interface components {
             scopeAll: boolean;
             projectIds: string[];
             readOnly: boolean;
+        };
+        AiSummarizeRequest: {
+            /** Format: uuid */
+            fileId: string;
+        };
+        AiSummaryResult: {
+            /** @description 不超过 200 字的内容摘要 */
+            summary: string;
+            keywords: string[];
+        };
+        AiClassifyRequest: {
+            /** Format: uuid */
+            projectId: string;
+        };
+        AiClassifySuggestion: {
+            /** Format: uuid */
+            fileId: string;
+            fileName: string;
+            /** @description AI 建议的类目名 */
+            suggestedCategory: string;
+            /** @description 一句话理由 */
+            reason: string;
+        };
+        AiClassifyResult: {
+            suggestions: components["schemas"]["AiClassifySuggestion"][];
+            /** @description AI 未配置或解析失败时的降级提示 */
+            notice?: string | null;
         };
     };
     responses: {
@@ -2862,6 +2921,60 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+        };
+    };
+    summarizeFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AiSummarizeRequest"];
+            };
+        };
+        responses: {
+            /** @description AI 摘要与关键词 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiSummaryResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            415: components["responses"]["BadRequest"];
+        };
+    };
+    classifyProjectFiles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AiClassifyRequest"];
+            };
+        };
+        responses: {
+            /** @description 分类建议清单（AI 提议，不自动落库） */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiClassifyResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
         };
     };
     listAgentGrants: {

@@ -158,6 +158,37 @@ async function download() {
   console.log(`已下载 ${formatBytes(buffer.length)} 到 ${path.resolve(savePath)}`);
 }
 
+async function summarize() {
+  const fileId = args._[1];
+  if (!fileId) fail('用法：summarize <fileId>');
+  const result = await api('/ai/summarize', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ fileId }),
+  });
+  console.log(`摘要：${result.summary}`);
+  console.log(`关键词：${(result.keywords ?? []).join('、') || '（无）'}`);
+}
+
+async function classify() {
+  const projectId = args.project;
+  if (!projectId) fail('用法：classify --project <projectId>');
+  const result = await api('/ai/classify', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ projectId }),
+  });
+  if (result.notice) console.log(`提示：${result.notice}`);
+  if (!result.suggestions || result.suggestions.length === 0) {
+    console.log('（没有分类建议）');
+    return;
+  }
+  console.log(`共 ${result.suggestions.length} 条分类建议：`);
+  for (const item of result.suggestions) {
+    console.log(`${item.fileId}  ${item.fileName} → ${item.suggestedCategory}（${item.reason}）`);
+  }
+}
+
 async function upload() {
   const filePath = args._[1];
   const projectId = args.project;
@@ -233,10 +264,19 @@ async function upload() {
   console.log(`上传完成：${file.fileName}（${formatBytes(file.sizeBytes)}），fileId=${file.fileId}`);
 }
 
-const HANDLERS = { exchange, projects, search, 'ai-find': aiFind, download, upload };
+const HANDLERS = {
+  exchange,
+  projects,
+  search,
+  'ai-find': aiFind,
+  summarize,
+  classify,
+  download,
+  upload,
+};
 const handler = HANDLERS[command];
 if (!handler) {
-  console.log('用法：node vaultdeck.mjs <命令>\n  exchange  授权码换令牌（--url --code）\n  projects  项目清单\n  search    条件搜索（--keyword --from --to --min-size --max-size --ext --project）\n  ai-find   AI 自然语言找文件\n  download  下载（<fileId> <保存路径>）\n  upload    上传（<本地文件> --project <projectId>）');
+  console.log('用法：node vaultdeck.mjs <命令>\n  exchange   授权码换令牌（--url --code）\n  projects   项目清单\n  search     条件搜索（--keyword --from --to --min-size --max-size --ext --project）\n  ai-find    AI 自然语言找文件\n  summarize  AI 总结一个文件（<fileId>）\n  classify   AI 分类建议（--project <projectId>）\n  download   下载（<fileId> <保存路径>）\n  upload     上传（<本地文件> --project <projectId>）');
   process.exit(command ? 1 : 0);
 }
 await handler();
