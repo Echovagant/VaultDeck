@@ -1,0 +1,9 @@
+{
+  "name": "@vaultdeck/mcp-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "VaultDeck MCP Server：把局域网资料库的检索 / AI 找文件 / 下载 / 上传暴露为 MCP 工具面（stdio），零第三方依赖",
+  "type": "module",
+  "bin": { "vaultdeck-mcp": "./index.mjs" },
+  "engines": { "node": ">=18" }
+}

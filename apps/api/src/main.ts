@@ -48,13 +48,16 @@ async function bootstrap(): Promise<void> {
     done();
   });
 
-  // 只读 Agent 授权的写操作拦截：统一在协议层挡住，控制器不用各自判
+  // 只读 Agent 授权的写操作拦截：统一在协议层挡住，控制器不用各自判。
+  // /ai/parse-search 虽是 POST 但语义是读（AI 解析），只读授权必须放行。
+  const READ_ONLY_ALLOWED_POSTS = ['/api/v1/ai/parse-search'];
   fastify.addHook('preHandler', async (request, reply) => {
     const header = request.headers.authorization;
     const token =
       typeof header === 'string' ? (/^Bearer\s+(.+)$/i.exec(header.trim())?.[1] ?? null) : null;
     if (!token || !token.startsWith('vdak_')) return;
     if (['GET', 'HEAD', 'OPTIONS'].includes(request.method)) return;
+    if (READ_ONLY_ALLOWED_POSTS.some((pathName) => request.url.split('?')[0] === pathName)) return;
 
     const identity = await store.userByAgentToken(token);
     if (identity?.grant.readOnly) {
