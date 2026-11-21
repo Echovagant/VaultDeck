@@ -17,6 +17,8 @@
 - **内容寻址存储**：相同内容只保留一份，删除进入回收站，默认保留 10 天
 - **在线预览**：PDF、图片、文本由浏览器直接打开；docx 与 xlsx 在浏览器内渲染；pptx 可选服务端 LibreOffice 转换
 - **权限**：领队 / 执行领队 / 队员三级角色，项目成员隔离，下载、预览、打包均校验权限
+- **AI 能力**：自然语言找文件、文件内容总结、分类建议；模型密钥 BYOK，支持本机 Ollama 不出局域网
+- **Agent 接入**：授权码换访问令牌，绑定角色与项目范围，只读位可选，撤销立即失效；提供 MCP Server 与 Skill 包
 - **审计**：登录、上传、下载、删除、恢复等操作追加写入，只增不改
 - **账号**：不开放注册，领队创建账号、重置口令、停用账号；支持 TOTP 双重验证
 - **统计**：按项目统计文件数、容量与类型分布，可导出 CSV
@@ -84,7 +86,21 @@ npm run dev --workspace @vaultdeck/web
 
 Windows PowerShell 中把 `VD_BOOTSTRAP_DEMO=true` 写成 `$env:VD_BOOTSTRAP_DEMO='true'`。前端默认 `http://localhost:5173`，Vite 将 `/api` 代理到后端。
 
-使用 PostgreSQL 时设置 `VD_STORE=postgres`、`VD_DATABASE_URL`，执行 `npm run db:migrate` 后启动。空库首次使用 `VD_BOOTSTRAP_DEMO=true` 会创建 `leader` / `deputy` / `member` 三个演示账号；仅用于首次初始化，登录后请立即修改口令。
+使用 PostgreSQL 时设置 `VD_STORE=postgres`、`VD_DATABASE_URL`，执行 `npm run db:migrate` 后启动。空库首次使用 `VD_BOOTSTRAP_DEMO=true` 会创建 `leader` / `deputy` / `member` 三个演示账号；仅用于首次初始化，登录后请立即修改口令。开发环境另可用 `VD_BOOTSTRAP_DEMO=rich` 生成约 360 个带内容的演示文件与 1GB 级压测样本（仅内存模式）。
+
+## AI 与 Agent
+
+- **AI 找文件**：搜索页用一句话描述要找的文件（如「上周上传的超过 100MB 的视频」），服务端把这句话解析成条件后检索；结果与普通搜索同源，权限过滤一致，AI 出错自动退回普通搜索。
+- **AI 总结 / 分类建议**：文件页可对单个纯文本类文件输出摘要与关键词；对项目内文件批量给出分类建议（只提议，不自动落库）。
+- **Agent 接入**：后台可为外部 Agent 发授权码——授权码换取访问令牌，绑定角色档位与项目范围，只读位可选，撤销立即失效。全部授权与使用进审计日志。
+- **密钥**：模型密钥由使用者自带（BYOK），领队在设置页配置后以 AES-256-GCM 密封存储（内存模式密封在用户目录，PostgreSQL 模式密封进数据库）；也可配置本机 Ollama，查询不出局域网。
+
+外部 Agent 两种接入方式：
+
+- **MCP Server**（Claude Desktop / Cherry Studio / Cursor 等）：离线包 `current/mcp/` 内附 `vaultdeck-mcp.mjs` 与安装说明，工具面含找文件 / 搜索 / 总结 / 分类建议 / 下载 / 上传。
+- **Skill 包**：Releases 页的 `vaultdeck-skill-x.x.x.zip`，按包内 SKILL.md 的指引安装授权，适合千问等支持 Skill 的助手。
+
+配置说明（供应商、密钥、`VD_AI_TIMEOUT_MS`）见[部署手册](docs/ops/deployment.md)。
 
 ## 性能参考
 

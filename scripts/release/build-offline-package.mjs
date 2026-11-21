@@ -190,6 +190,8 @@ async function main() {
     throw new Error('apps/web/dist/index.html 不存在');
   if (!existsSync(path.join(ROOT, 'packages', 'llm', 'dist', 'index.js')))
     throw new Error('packages/llm/dist/index.js 不存在');
+  if (!existsSync(path.join(ROOT, 'apps', 'mcp-server', 'index.mjs')))
+    throw new Error('apps/mcp-server/index.mjs 不存在');
 
   await mkdir(staging, { recursive: true });
   // Rebuilds reuse the same version directory; remove stale files from earlier builds.
@@ -263,6 +265,18 @@ async function main() {
     path.join(staging, 'current', 'api', 'node_modules', '@vaultdeck', 'llm', 'package.json'),
   );
   log('copied @vaultdeck/llm dist + package.json into closure');
+
+  // MCP Server（可选组件）：单文件零依赖，拷 mcp/ 目录不进启动路径，供外部 Agent 配置使用
+  await mkdir(path.join(staging, 'current', 'mcp'), { recursive: true });
+  await copyTree(
+    path.join(ROOT, 'apps', 'mcp-server', 'index.mjs'),
+    path.join(staging, 'current', 'mcp', 'vaultdeck-mcp.mjs'),
+  );
+  await copyTree(
+    path.join(ROOT, 'apps', 'mcp-server', 'MCP-INSTALL.md'),
+    path.join(staging, 'current', 'mcp', 'MCP-INSTALL.md'),
+  );
+  log('copied MCP server into current/mcp (optional component)');
 
   // 4) runtime/node：便携 Node（官方源或 VD_NODE_MIRROR + SHASUMS256 校验）
   const nodeZipName = `node-v${nodeVersion}-win-x64.zip`;

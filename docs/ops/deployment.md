@@ -129,8 +129,24 @@ WinSW 注册服务、写防火墙规则、导入计算机级证书需要管理�
 - `VAULTDECK_DB_URL`（连接串，含口令，只放本机）
 - `VD_ENCRYPTION_KEY_FILE`（指向 `secrets\encryption.key`）
 - `VD_REQUIRE_CLIENT_CERT`（可选，启用双向 TLS 时设为 `true`）
+- `VD_AI_TIMEOUT_MS`（可选，模型调用超时毫秒数，默认 60000；夜间/高峰时段响应慢可调大）
 
 非管理员环境不要注册服务：前台运行 `node current\api\main.js` 与 `nginx.exe`，仅用于开发验证，不作为交付形态。
+
+### 5.1 AI 能力配置
+
+AI 功能（找文件、总结、分类建议）使用 BYOK：模型密钥由使用者在 Web 界面「设置 → AI 服务」中自行填写（领队权限）；服务端以 `encryption.key` 密封存储，界面不回显。
+
+- 供应商从内置目录选择（MiniMax / 智谱 / DeepSeek / 本机 Ollama 等 10 条 OpenAI 兼容接入线），也可自定义端点。
+- 保存 API Key 需要 `encryption.key` 存在（即 `VD_ENCRYPTION_KEY_FILE` 指向的文件）；缺失时界面会拒绝保存。
+- 查询语句与待总结内容会发送给所选厂商；选择「本机 Ollama / vLLM」则数据不出局域网。
+- 模型调用超时或失败均自动降级为普通搜索，不影响核心功能。
+
+### 5.2 Agent 接入（可选）
+
+「后台 → Agent 接入」为外部 Agent（MCP 客户端、Skill 包）发放授权：授权码一次性、15 分钟内有效；Agent 兑换得到访问令牌（`vdak_` 前缀），令牌绑定角色档位与项目范围，撤销立即失效；只读授权的写操作在服务端被拦截。创建、兑换与使用均进审计日志。
+
+离线包 `current\mcp\` 目录内置 MCP Server（零依赖单文件）与安装说明 `MCP-INSTALL.md`；Skill 包从 Releases 页下载，安装步骤见包内 `SKILL.md`。
 
 ## 6 启动与回滚
 

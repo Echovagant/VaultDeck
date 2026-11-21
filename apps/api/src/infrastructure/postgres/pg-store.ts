@@ -496,21 +496,18 @@ export class PgStore implements StorePort {
 
   async exchangeAgentCode(code: string): Promise<AgentTokenIssued | null> {
     const codeHash = sha256Hex(code);
-    const found = await this.pool.query<AgentGrantRow>(
-      `SELECT * FROM agent_grant
-        WHERE code_hash = $1 AND revoked_at IS NULL AND code_used = false AND code_expires_at > now()
-        LIMIT 1`,
-      [codeHash],
-    );
-    const row = found.rows[0];
-    if (!row) return null;
-
     const { token, tokenHash } = generateAgentToken();
+    // 原子条件更新：并发兑换同一授权码时只有一个 UPDATE 能命中，杜绝双签发
     const updated = await this.pool.query<AgentGrantRow>(
-      'UPDATE agent_grant SET token_hash = $2, code_used = true WHERE grant_id = $1 RETURNING *',
-      [row.grant_id, tokenHash],
+      `UPDATE agent_grant
+         SET token_hash = $2, code_used = true
+         WHERE code_hash = $1 AND revoked_at IS NULL AND code_used = false AND code_expires_at > now()
+         RETURNING *`,
+      [codeHash, tokenHash],
     );
-    const record = mapAgentGrant(updated.rows[0]!);
+    const row = updated.rows[0];
+    if (!row) return null;
+    const record = mapAgentGrant(row);
     return {
       grantId: record.grantId,
       token,
