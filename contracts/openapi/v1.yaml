@@ -25,6 +25,7 @@ tags:
   - name: imports
   - name: system
   - name: ai
+  - name: agent
 paths:
   /auth/login:
     post:
@@ -968,6 +969,68 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ParseSearchResult' }
         '400': { $ref: '#/components/responses/BadRequest' }
+  /agent/grants:
+    post:
+      tags: [agent]
+      operationId: createAgentGrant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AgentGrantCreate' }
+      responses:
+        '200':
+          description: 已创建，授权码明文只在此响应出现一次
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AgentGrantCreated' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+    get:
+      tags: [agent]
+      operationId: listAgentGrants
+      responses:
+        '200':
+          description: 授权清单
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/AgentGrantView' }
+  /agent/grants/{grantId}:
+    patch:
+      tags: [agent]
+      operationId: revokeAgentGrant
+      parameters:
+        - { name: grantId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AgentGrantRevoke' }
+      responses:
+        '200':
+          description: 已撤销，该授权的 token 立即失效
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AgentGrantView' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /agent/token:
+    post:
+      tags: [agent]
+      operationId: exchangeAgentToken
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AgentTokenRequest' }
+      responses:
+        '200':
+          description: 兑换成功，token 明文只在此响应出现一次
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AgentTokenResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
   /system/settings:
     get:
       tags: [system]
@@ -1647,3 +1710,71 @@ components:
             - { $ref: '#/components/schemas/ParsedSearchFilters' }
             - { type: 'null' }
         notice: { type: [string, 'null'] }
+    AgentGrantView:
+      type: object
+      required: [grantId, name, role, scopeAll, projectIds, readOnly, codeUsed, hasToken, createdAt, createdBy]
+      properties:
+        grantId: { type: string, format: uuid }
+        name: { type: string }
+        role: { type: string, enum: [DEPUTY_LEADER, MEMBER] }
+        scopeAll: { type: boolean }
+        projectIds: { type: array, items: { type: string, format: uuid } }
+        readOnly: { type: boolean }
+        codeUsed: { type: boolean }
+        codeExpiresAt: { type: [string, 'null'], format: date-time }
+        hasToken: { type: boolean }
+        lastUsedAt: { type: [string, 'null'], format: date-time }
+        revokedAt: { type: [string, 'null'], format: date-time }
+        createdAt: { type: string, format: date-time }
+        createdBy: { type: string, format: uuid }
+    AgentGrantCreate:
+      type: object
+      additionalProperties: false
+      required: [name, role, scopeAll, readOnly]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 64 }
+        role: { type: string, enum: [DEPUTY_LEADER, MEMBER] }
+        scopeAll: { type: boolean }
+        projectIds: { type: array, items: { type: string, format: uuid }, maxItems: 100 }
+        readOnly: { type: boolean }
+    AgentGrantCreated:
+      type: object
+      required: [grantId, name, role, scopeAll, projectIds, readOnly, codeUsed, hasToken, createdAt, createdBy, code, codeExpiresAt]
+      properties:
+        grantId: { type: string, format: uuid }
+        name: { type: string }
+        role: { type: string, enum: [DEPUTY_LEADER, MEMBER] }
+        scopeAll: { type: boolean }
+        projectIds: { type: array, items: { type: string, format: uuid } }
+        readOnly: { type: boolean }
+        codeUsed: { type: boolean }
+        codeExpiresAt: { type: [string, 'null'], format: date-time }
+        hasToken: { type: boolean }
+        lastUsedAt: { type: [string, 'null'], format: date-time }
+        revokedAt: { type: [string, 'null'], format: date-time }
+        createdAt: { type: string, format: date-time }
+        createdBy: { type: string, format: uuid }
+        code: { type: string, description: 授权码明文，只出现这一次 }
+    AgentGrantRevoke:
+      type: object
+      additionalProperties: false
+      required: [revoked]
+      properties:
+        revoked: { type: boolean, enum: [true] }
+    AgentTokenRequest:
+      type: object
+      additionalProperties: false
+      required: [code]
+      properties:
+        code: { type: string, minLength: 4, maxLength: 80 }
+    AgentTokenResponse:
+      type: object
+      required: [grantId, token, displayName, role, scopeAll, projectIds, readOnly]
+      properties:
+        grantId: { type: string, format: uuid }
+        token: { type: string, description: 访问令牌明文，只出现这一次 }
+        displayName: { type: string }
+        role: { type: string, enum: [DEPUTY_LEADER, MEMBER] }
+        scopeAll: { type: boolean }
+        projectIds: { type: array, items: { type: string, format: uuid } }
+        readOnly: { type: boolean }

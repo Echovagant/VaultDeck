@@ -708,6 +708,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/agent/grants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listAgentGrants"];
+        put?: never;
+        post: operations["createAgentGrant"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agent/grants/{grantId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["revokeAgentGrant"];
+        trace?: never;
+    };
+    "/agent/token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["exchangeAgentToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/system/settings": {
         parameters: {
             query?: never;
@@ -1174,6 +1222,79 @@ export interface components {
         ParseSearchResult: {
             filters: components["schemas"]["ParsedSearchFilters"] | null;
             notice?: string | null;
+        };
+        AgentGrantView: {
+            /** Format: uuid */
+            grantId: string;
+            name: string;
+            /** @enum {string} */
+            role: "DEPUTY_LEADER" | "MEMBER";
+            scopeAll: boolean;
+            projectIds: string[];
+            readOnly: boolean;
+            codeUsed: boolean;
+            /** Format: date-time */
+            codeExpiresAt?: string | null;
+            hasToken: boolean;
+            /** Format: date-time */
+            lastUsedAt?: string | null;
+            /** Format: date-time */
+            revokedAt?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            createdBy: string;
+        };
+        AgentGrantCreate: {
+            name: string;
+            /** @enum {string} */
+            role: "DEPUTY_LEADER" | "MEMBER";
+            scopeAll: boolean;
+            projectIds?: string[];
+            readOnly: boolean;
+        };
+        AgentGrantCreated: {
+            /** Format: uuid */
+            grantId: string;
+            name: string;
+            /** @enum {string} */
+            role: "DEPUTY_LEADER" | "MEMBER";
+            scopeAll: boolean;
+            projectIds: string[];
+            readOnly: boolean;
+            codeUsed: boolean;
+            /** Format: date-time */
+            codeExpiresAt: string | null;
+            hasToken: boolean;
+            /** Format: date-time */
+            lastUsedAt?: string | null;
+            /** Format: date-time */
+            revokedAt?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            createdBy: string;
+            /** @description 授权码明文，只出现这一次 */
+            code: string;
+        };
+        AgentGrantRevoke: {
+            /** @enum {boolean} */
+            revoked: true;
+        };
+        AgentTokenRequest: {
+            code: string;
+        };
+        AgentTokenResponse: {
+            /** Format: uuid */
+            grantId: string;
+            /** @description 访问令牌明文，只出现这一次 */
+            token: string;
+            displayName: string;
+            /** @enum {string} */
+            role: "DEPUTY_LEADER" | "MEMBER";
+            scopeAll: boolean;
+            projectIds: string[];
+            readOnly: boolean;
         };
     };
     responses: {
@@ -2738,6 +2859,103 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ParseSearchResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    listAgentGrants: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 授权清单 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentGrantView"][];
+                };
+            };
+        };
+    };
+    createAgentGrant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentGrantCreate"];
+            };
+        };
+        responses: {
+            /** @description 已创建，授权码明文只在此响应出现一次 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentGrantCreated"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    revokeAgentGrant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                grantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentGrantRevoke"];
+            };
+        };
+        responses: {
+            /** @description 已撤销，该授权的 token 立即失效 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentGrantView"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    exchangeAgentToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentTokenRequest"];
+            };
+        };
+        responses: {
+            /** @description 兑换成功，token 明文只在此响应出现一次 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTokenResponse"];
                 };
             };
             400: components["responses"]["BadRequest"];

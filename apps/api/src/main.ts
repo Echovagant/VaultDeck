@@ -48,6 +48,31 @@ async function bootstrap(): Promise<void> {
     done();
   });
 
+  // 只读 Agent 授权的写操作拦截：统一在协议层挡住，控制器不用各自判
+  fastify.addHook('preHandler', async (request, reply) => {
+    const header = request.headers.authorization;
+    const token =
+      typeof header === 'string' ? (/^Bearer\s+(.+)$/i.exec(header.trim())?.[1] ?? null) : null;
+    if (!token || !token.startsWith('vdak_')) return;
+    if (['GET', 'HEAD', 'OPTIONS'].includes(request.method)) return;
+
+    const identity = await store.userByAgentToken(token);
+    if (identity?.grant.readOnly) {
+      const requestId = ensureRequestId(request as RequestWithId);
+      void reply
+        .code(403)
+        .header('content-type', 'application/problem+json')
+        .send(
+          toProblem(
+            new DomainError('AUTH', 'VD-AUTH-403', '该 Agent 授权为只读，无权执行写操作', {
+              status: 403,
+            }),
+            requestId,
+          ),
+        );
+    }
+  });
+
   fastify.addHook('onSend', (request, reply, payload, done) => {
     if (reply.statusCode !== 404) {
       done(null, payload);

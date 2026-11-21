@@ -1,10 +1,26 @@
 import { randomUUID } from 'node:crypto';
 
+import {
+  agentCanAccessProject,
+  agentCanReadFile,
+  agentGrantIdFromUser,
+  agentProjectScope,
+  generateAgentCode,
+  generateAgentToken,
+  isAgentUserId,
+  sha256Hex,
+  syntheticAgentUser,
+} from '../auth/agent-grant';
 import type {
   AddFileInput,
   AddMemberInput,
+  AgentGrantSecret,
+  AgentGrantView,
+  AgentIdentity,
+  AgentTokenIssued,
   AiSettingsPatchInput,
   AiSettingsView,
+  CreateAgentGrantInput,
   CreateCategoryInput,
   CreateFolderInput,
   CreateProjectInput,
@@ -60,6 +76,11 @@ class MemoryStore implements StorePort {
     effort: string | null;
     apiKey: string | null;
   } = { providerId: null, baseUrl: null, model: null, effort: null, apiKey: null };
+  // Agent 授权：码与 token 只存 hash，明文不落内存之外的任何地方
+  private readonly agentGrants = new Map<
+    string,
+    AgentGrantView & { codeHash: string; tokenHash: string | null }
+  >();
 
   constructor() {
     this.seed();
@@ -212,6 +233,103 @@ class MemoryStore implements StorePort {
     return this.ai.apiKey;
   }
 
+  // ---------- Agent 授权 ----------
+
+  private agentGrantOf(user: StoreUser): (AgentGrantView & { tokenHash: string | null }) | null {
+    const grantId = agentGrantIdFromUser(user.userId);
+    return grantId ? (this.agentGrants.get(grantId) ?? null) : null;
+  }
+
+  private toGrantView(record: AgentGrantView & { codeHash: string; tokenHash: string | null }): AgentGrantView {
+    const { codeHash: _codeHash, tokenHash: _tokenHash, ...view } = record;
+    return { ...view, hasToken: record.tokenHash !== null };
+  }
+
+  async createAgentGrant(input: CreateAgentGrantInput): Promise<{
+    view: AgentGrantView;
+    secret: AgentGrantSecret;
+  }> {
+    const grantId = randomUUID();
+    const { code, codeHash, expiresAt } = generateAgentCode();
+    const record: AgentGrantView & { codeHash: string; tokenHash: string | null } = {
+      grantId,
+      name: input.name,
+      role: input.role,
+      scopeAll: input.scopeAll,
+      projectIds: [...input.projectIds],
+      readOnly: input.readOnly,
+      codeUsed: false,
+      codeExpiresAt: expiresAt.toISOString(),
+      hasToken: false,
+      tokenHash: null,
+      lastUsedAt: null,
+      revokedAt: null,
+      createdAt: new Date().toISOString(),
+      createdBy: input.createdBy,
+      codeHash,
+    };
+    this.agentGrants.set(grantId, record);
+    return {
+      view: this.toGrantView(record),
+      secret: { grantId, code, expiresAt: record.codeExpiresAt ?? expiresAt.toISOString() },
+    };
+  }
+
+  async listAgentGrants(): Promise<AgentGrantView[]> {
+    return [...this.agentGrants.values()]
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+      .map((record) => this.toGrantView(record));
+  }
+
+  async revokeAgentGrant(grantId: string): Promise<AgentGrantView | null> {
+    const record = this.agentGrants.get(grantId);
+    if (!record || record.revokedAt) return null;
+    record.revokedAt = new Date().toISOString();
+    return this.toGrantView(record);
+  }
+
+  async exchangeAgentCode(code: string): Promise<AgentTokenIssued | null> {
+    const record = [...this.agentGrants.values()].find((item) => {
+      return item.codeHash === sha256Hex(code);
+    });
+    if (!record || record.revokedAt || record.codeUsed) return null;
+    if (record.codeExpiresAt && record.codeExpiresAt < new Date().toISOString()) return null;
+
+    const { token, tokenHash } = generateAgentToken();
+    record.tokenHash = tokenHash;
+    record.codeUsed = true;
+    return {
+      grantId: record.grantId,
+      token,
+      displayName: record.name,
+      role: record.role,
+      scopeAll: record.scopeAll,
+      projectIds: [...record.projectIds],
+      readOnly: record.readOnly,
+    };
+  }
+
+  async userByAgentToken(token: string): Promise<AgentIdentity | null> {
+    const record = [...this.agentGrants.values()].find(
+      (item) => item.tokenHash !== null && item.tokenHash === sha256Hex(token),
+    );
+    if (!record || record.revokedAt) return null;
+    record.lastUsedAt = new Date().toISOString();
+    return { user: syntheticAgentUser(record), grant: this.toGrantView(record) };
+  }
+
+  private agentScope(user: StoreUser): string[] | null {
+    const grant = this.agentGrantOf(user);
+    if (!grant || grant.revokedAt) return [];
+    return agentProjectScope(grant);
+  }
+
+  private agentFileAccess(user: StoreUser, file: StoreFile): boolean {
+    const grant = this.agentGrantOf(user);
+    if (!grant || grant.revokedAt) return false;
+    return agentCanReadFile(grant, file);
+  }
+
   async updateProfile(userId: string, displayName: string): Promise<StoreUser> {
     const record = this.users.get(userId);
     if (!record) throw new Error('USER_NOT_FOUND');
@@ -238,17 +356,23 @@ class MemoryStore implements StorePort {
   }
 
   async visibleProjectIds(user: StoreUser): Promise<string[] | null> {
+    if (isAgentUserId(user.userId)) return this.agentScope(user);
     if (user.role === 'LEADER') return null;
     return this.memberProjectIds(user.userId);
   }
 
   async canAccessProject(user: StoreUser, projectId: string): Promise<boolean> {
+    if (isAgentUserId(user.userId)) {
+      const grant = this.agentGrantOf(user);
+      return grant ? agentCanAccessProject(grant, projectId) : false;
+    }
     if (user.role === 'LEADER') return true;
     return (await this.memberProjectIds(user.userId)).includes(projectId);
   }
 
   async canReadFile(user: StoreUser, file: StoreFile): Promise<boolean> {
     if (file.status !== 'active') return false;
+    if (isAgentUserId(user.userId)) return this.agentFileAccess(user, file);
     if (user.role === 'LEADER') return true;
     if (!(await this.canAccessProject(user, file.projectId))) return false;
     if (user.role === 'DEPUTY_LEADER') return true;
@@ -257,6 +381,7 @@ class MemoryStore implements StorePort {
 
   async canDeleteFile(user: StoreUser, file: StoreFile): Promise<boolean> {
     if (file.status !== 'active') return false;
+    if (isAgentUserId(user.userId)) return this.agentFileAccess(user, file);
     if (user.role === 'LEADER') return true;
     if (!(await this.canAccessProject(user, file.projectId))) return false;
     if (user.role === 'DEPUTY_LEADER') return true;
@@ -264,6 +389,7 @@ class MemoryStore implements StorePort {
   }
 
   async canManageTrashedFile(user: StoreUser, file: StoreFile): Promise<boolean> {
+    if (isAgentUserId(user.userId)) return this.agentFileAccess(user, file);
     if (user.role === 'LEADER') return true;
     if (!(await this.canAccessProject(user, file.projectId))) return false;
     if (user.role === 'DEPUTY_LEADER') return true;

@@ -103,6 +103,59 @@ export interface AiSettingsView {
   hasApiKey: boolean;
 }
 
+/** Agent 授权绑定的角色档位：领队档不开放给外部 Agent */
+export type AgentGrantRole = 'DEPUTY_LEADER' | 'MEMBER';
+
+/** 对外可见的 Agent 授权（永不包含授权码 / token 明文或其 hash） */
+export interface AgentGrantView {
+  grantId: string;
+  name: string;
+  role: AgentGrantRole;
+  scopeAll: boolean;
+  projectIds: string[];
+  readOnly: boolean;
+  codeUsed: boolean;
+  codeExpiresAt: string | null;
+  hasToken: boolean;
+  lastUsedAt: string | null;
+  revokedAt: string | null;
+  createdAt: string;
+  createdBy: string;
+}
+
+export interface CreateAgentGrantInput {
+  name: string;
+  role: AgentGrantRole;
+  scopeAll: boolean;
+  projectIds: string[];
+  readOnly: boolean;
+  createdBy: string;
+}
+
+/** 授权码明文只在创建响应里出现一次，库存 hash */
+export interface AgentGrantSecret {
+  grantId: string;
+  code: string;
+  expiresAt: string;
+}
+
+/** 兑换成功后的签发结果；token 明文只在兑换响应里出现一次 */
+export interface AgentTokenIssued {
+  grantId: string;
+  token: string;
+  displayName: string;
+  role: AgentGrantRole;
+  scopeAll: boolean;
+  projectIds: string[];
+  readOnly: boolean;
+}
+
+/** Agent token 解析出的身份：合成用户 + 所在授权 */
+export interface AgentIdentity {
+  user: StoreUser;
+  grant: AgentGrantView;
+}
+
 export interface AiSettingsPatchInput {
   providerId?: string | null;
   baseUrl?: string | null;
@@ -223,6 +276,17 @@ export interface StorePort {
   updateAiSettings(patch: AiSettingsPatchInput): Promise<AiSettingsView>;
   /** 明文 API Key，仅供服务端调用模型适配器，禁止回传前端或写入日志 */
   aiApiKey(): Promise<string | null>;
+
+  createAgentGrant(input: CreateAgentGrantInput): Promise<{
+    view: AgentGrantView;
+    secret: AgentGrantSecret;
+  }>;
+  listAgentGrants(): Promise<AgentGrantView[]>;
+  revokeAgentGrant(grantId: string): Promise<AgentGrantView | null>;
+  /** 一次性授权码换 token；无效 / 已用 / 过期 / 已撤销返回 null */
+  exchangeAgentCode(code: string): Promise<AgentTokenIssued | null>;
+  /** Agent token → 合成用户身份；无效或已撤销返回 null */
+  userByAgentToken(token: string): Promise<AgentIdentity | null>;
 
   memberProjectIds(userId: string): Promise<string[]>;
   visibleProjectIds(user: StoreUser): Promise<string[] | null>;

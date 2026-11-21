@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { AuthController } from './interfaces/http/controllers/auth.controller';
+import { AgentController } from './interfaces/http/controllers/agent.controller';
 import { AiController } from './interfaces/http/controllers/ai.controller';
 import { AuditController } from './interfaces/http/controllers/audit.controller';
 import { BundlesController } from './interfaces/http/controllers/bundles.controller';
@@ -35,6 +36,7 @@ import { SystemIntegrityController } from './interfaces/http/controllers/system-
     CategoriesController,
     SystemSettingsController,
     SystemIntegrityController,
+    AgentController,
   ],
 })
 export class AppModule {}

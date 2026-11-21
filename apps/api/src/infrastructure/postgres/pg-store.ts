@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 
 import type { Pool, PoolClient } from 'pg';
 
@@ -29,8 +29,24 @@ import type {
   UpdateUserInput,
   AiSettingsPatchInput,
   AiSettingsView,
+  AgentGrantRole,
+  AgentGrantSecret,
+  AgentGrantView,
+  AgentIdentity,
+  AgentTokenIssued,
+  CreateAgentGrantInput,
 } from '../../application/ports/store.port';
 import { openText, sealText } from '../crypto/at-rest';
+import {
+  agentCanAccessProject,
+  agentCanReadFile,
+  agentGrantIdFromUser,
+  agentProjectScope,
+  generateAgentCode,
+  generateAgentToken,
+  isAgentUserId,
+  syntheticAgentUser,
+} from '../auth/agent-grant';
 import { hashPassword, verifyPassword } from './password';
 
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
@@ -59,6 +75,45 @@ function mapUser(row: UserRow): StoreUser {
     displayName: row.display_name,
     role: row.role_code,
     status: row.status,
+  };
+}
+
+interface AgentGrantRow {
+  grant_id: string;
+  name: string;
+  role_code: string;
+  scope_all: boolean;
+  project_ids: unknown;
+  read_only: boolean;
+  code_hash: string;
+  code_used: boolean;
+  code_expires_at: Date | string;
+  token_hash: string | null;
+  last_used_at: Date | string | null;
+  revoked_at: Date | string | null;
+  created_by: string;
+  created_at: Date | string;
+}
+
+function mapAgentGrant(
+  row: AgentGrantRow,
+): AgentGrantView & { codeHash: string; tokenHash: string | null } {
+  return {
+    grantId: row.grant_id,
+    name: row.name,
+    role: row.role_code as AgentGrantRole,
+    scopeAll: row.scope_all,
+    projectIds: Array.isArray(row.project_ids) ? (row.project_ids as string[]) : [],
+    readOnly: row.read_only,
+    codeUsed: row.code_used,
+    codeExpiresAt: iso(row.code_expires_at),
+    hasToken: row.token_hash !== null,
+    lastUsedAt: row.last_used_at ? iso(row.last_used_at) : null,
+    revokedAt: row.revoked_at ? iso(row.revoked_at) : null,
+    createdAt: iso(row.created_at),
+    createdBy: row.created_by,
+    codeHash: row.code_hash,
+    tokenHash: row.token_hash,
   };
 }
 
@@ -370,6 +425,115 @@ export class PgStore implements StorePort {
     return openText(value);
   }
 
+  // ---------- Agent 授权 ----------
+
+  private toGrantView(
+    record: AgentGrantView & { codeHash: string; tokenHash: string | null },
+  ): AgentGrantView {
+    const { codeHash: _codeHash, tokenHash: _tokenHash, ...view } = record;
+    return { ...view, hasToken: record.tokenHash !== null };
+  }
+
+  private async agentGrantOfUser(user: StoreUser): Promise<AgentGrantView | null> {
+    const grantId = agentGrantIdFromUser(user.userId);
+    if (!grantId) return null;
+    const result = await this.pool.query<AgentGrantRow>(
+      'SELECT * FROM agent_grant WHERE grant_id = $1',
+      [grantId],
+    );
+    const row = result.rows[0];
+    return row ? mapAgentGrant(row) : null;
+  }
+
+  async createAgentGrant(input: CreateAgentGrantInput): Promise<{
+    view: AgentGrantView;
+    secret: AgentGrantSecret;
+  }> {
+    const grantId = randomUUID();
+    const { code, codeHash, expiresAt } = generateAgentCode();
+    const result = await this.pool.query<AgentGrantRow>(
+      `INSERT INTO agent_grant
+         (grant_id, name, role_code, scope_all, project_ids, read_only, code_hash, code_expires_at, created_by)
+       VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9)
+       RETURNING *`,
+      [
+        grantId,
+        input.name,
+        input.role,
+        input.scopeAll,
+        JSON.stringify(input.projectIds),
+        input.readOnly,
+        codeHash,
+        expiresAt.toISOString(),
+        input.createdBy,
+      ],
+    );
+    const record = mapAgentGrant(result.rows[0]!);
+    return {
+      view: this.toGrantView(record),
+      secret: { grantId, code, expiresAt: record.codeExpiresAt ?? expiresAt.toISOString() },
+    };
+  }
+
+  async listAgentGrants(): Promise<AgentGrantView[]> {
+    const result = await this.pool.query<AgentGrantRow>(
+      'SELECT * FROM agent_grant ORDER BY created_at DESC',
+    );
+    return result.rows.map((row) => this.toGrantView(mapAgentGrant(row)));
+  }
+
+  async revokeAgentGrant(grantId: string): Promise<AgentGrantView | null> {
+    const result = await this.pool.query<AgentGrantRow>(
+      'UPDATE agent_grant SET revoked_at = now() WHERE grant_id = $1 AND revoked_at IS NULL RETURNING *',
+      [grantId],
+    );
+    const row = result.rows[0];
+    return row ? this.toGrantView(mapAgentGrant(row)) : null;
+  }
+
+  async exchangeAgentCode(code: string): Promise<AgentTokenIssued | null> {
+    const codeHash = sha256Hex(code);
+    const found = await this.pool.query<AgentGrantRow>(
+      `SELECT * FROM agent_grant
+        WHERE code_hash = $1 AND revoked_at IS NULL AND code_used = false AND code_expires_at > now()
+        LIMIT 1`,
+      [codeHash],
+    );
+    const row = found.rows[0];
+    if (!row) return null;
+
+    const { token, tokenHash } = generateAgentToken();
+    const updated = await this.pool.query<AgentGrantRow>(
+      'UPDATE agent_grant SET token_hash = $2, code_used = true WHERE grant_id = $1 RETURNING *',
+      [row.grant_id, tokenHash],
+    );
+    const record = mapAgentGrant(updated.rows[0]!);
+    return {
+      grantId: record.grantId,
+      token,
+      displayName: record.name,
+      role: record.role,
+      scopeAll: record.scopeAll,
+      projectIds: [...record.projectIds],
+      readOnly: record.readOnly,
+    };
+  }
+
+  async userByAgentToken(token: string): Promise<AgentIdentity | null> {
+    const tokenHash = sha256Hex(token);
+    const result = await this.pool.query<AgentGrantRow>(
+      'SELECT * FROM agent_grant WHERE token_hash = $1 AND revoked_at IS NULL LIMIT 1',
+      [tokenHash],
+    );
+    const row = result.rows[0];
+    if (!row) return null;
+    const record = mapAgentGrant(row);
+    await this.pool.query('UPDATE agent_grant SET last_used_at = now() WHERE grant_id = $1', [
+      record.grantId,
+    ]);
+    return { user: syntheticAgentUser(record), grant: this.toGrantView(record) };
+  }
+
   async updateProfile(userId: string, displayName: string): Promise<StoreUser> {
     const result = await this.pool.query<UserRow>(
       'UPDATE app_user SET display_name = $1 WHERE user_id = $2 RETURNING *',
@@ -423,11 +587,20 @@ export class PgStore implements StorePort {
   }
 
   async visibleProjectIds(user: StoreUser): Promise<string[] | null> {
+    if (isAgentUserId(user.userId)) {
+      const grant = await this.agentGrantOfUser(user);
+      if (!grant) return [];
+      return agentProjectScope(grant);
+    }
     if (user.role === 'LEADER') return null;
     return this.memberProjectIds(user.userId);
   }
 
   async canAccessProject(user: StoreUser, projectId: string): Promise<boolean> {
+    if (isAgentUserId(user.userId)) {
+      const grant = await this.agentGrantOfUser(user);
+      return grant ? agentCanAccessProject(grant, projectId) : false;
+    }
     if (user.role === 'LEADER') return true;
     const result = await this.pool.query(
       'SELECT 1 FROM project_member WHERE user_id = $1 AND project_id = $2',
@@ -438,6 +611,11 @@ export class PgStore implements StorePort {
 
   async canReadFile(user: StoreUser, file: StoreFile): Promise<boolean> {
     if (file.status !== 'active') return false;
+    if (isAgentUserId(user.userId)) {
+      const grant = await this.agentGrantOfUser(user);
+      if (!grant) return false;
+      return agentCanReadFile(grant, file);
+    }
     if (user.role === 'LEADER') return true;
     if (!(await this.canAccessProject(user, file.projectId))) return false;
     if (user.role === 'DEPUTY_LEADER') return true;
@@ -449,10 +627,7 @@ export class PgStore implements StorePort {
   }
 
   async canManageTrashedFile(user: StoreUser, file: StoreFile): Promise<boolean> {
-    if (user.role === 'LEADER') return true;
-    if (!(await this.canAccessProject(user, file.projectId))) return false;
-    if (user.role === 'DEPUTY_LEADER') return true;
-    return file.uploaderId === user.userId;
+    return this.canReadFile(user, file);
   }
 
   canViewAudit(user: StoreUser): boolean {

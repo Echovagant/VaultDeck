@@ -182,6 +182,14 @@ export function readBearerToken(header: string | undefined): string | null {
 
 export async function requireUser(header: string | undefined): Promise<StoreUser> {
   const token = readBearerToken(header);
+  // Agent token（vdak_ 前缀）走授权体系，不进会话表；权限过滤在 store 层按授权范围执行
+  if (token?.startsWith('vdak_')) {
+    const identity = await store.userByAgentToken(token);
+    if (!identity) {
+      throw new DomainError('AUTH', 'VD-AUTH-401', 'Agent 令牌无效或已撤销', { status: 401 });
+    }
+    return identity.user;
+  }
   const user = token ? await store.userByToken(token) : null;
   if (!user) {
     throw new DomainError('AUTH', 'VD-AUTH-401', '未登录或会话已失效', { status: 401 });
