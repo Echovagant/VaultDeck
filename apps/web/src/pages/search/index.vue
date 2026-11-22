@@ -57,8 +57,52 @@
           </div>
           <p class="semantic-excerpt">{{ item.excerpt.slice(0, 160) }}</p>
           <a-button type="link" size="small" @click="openSemanticPreview(item)">预览该文件</a-button>
+          <a-button
+            v-if="canShare"
+            type="link"
+            size="small"
+            @click="openShareCreate(item)"
+          >
+            分享
+          </a-button>
         </div>
       </a-spin>
+    </a-modal>
+
+    <a-modal
+      v-model:open="shareCreateVisible"
+      title="生成分享链接"
+      :confirm-loading="shareCreating"
+      ok-text="生成链接"
+      cancel-text="取消"
+      @ok="submitShareCreate"
+    >
+      <a-form layout="vertical">
+        <a-form-item label="文件">
+          <a-input :value="shareTarget?.fileName" disabled />
+        </a-form-item>
+        <a-form-item label="有效期">
+          <a-radio-group v-model:value="shareForm.expiresHours">
+            <a-radio :value="1">1 小时</a-radio>
+            <a-radio :value="24">24 小时</a-radio>
+            <a-radio :value="168">7 天</a-radio>
+          </a-radio-group>
+        </a-form-item>
+      </a-form>
+      <p class="ai-bar-hint">
+        链接仅限局域网内访问（公网来源会被拒绝）；到期或撤销后立即失效；下载会记入审计日志。
+      </p>
+    </a-modal>
+
+    <a-modal
+      v-model:open="shareResultVisible"
+      title="分享链接已生成"
+      :footer="null"
+      :destroy-on-close="true"
+    >
+      <p class="ai-bar-hint">链接明文只显示这一次，请立即复制发给同事；过期或撤销后失效。</p>
+      <a-typography-paragraph class="share-link" copyable>{{ shareResultUrl }}</a-typography-paragraph>
+      <p class="ai-bar-hint">有效期至 {{ shareResultExpires }}</p>
     </a-modal>
 
     <div v-if="filters" class="filter-chips">
@@ -120,11 +164,12 @@
 
 <script setup lang="ts">
 import { message } from 'ant-design-vue';
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
 import { ApiError, api, formatBytes } from '@/api/client';
 import FilePreviewDialog from '@/features/preview/FilePreviewDialog.vue';
+import { useSessionStore } from '@/stores/session';
 
 interface SearchItem {
   fileId: string;
@@ -148,6 +193,7 @@ interface ParsedFilters {
 
 const route = useRoute();
 const router = useRouter();
+const session = useSessionStore();
 
 const keyword = ref(String(route.query.q ?? ''));
 const items = ref<SearchItem[]>([]);
@@ -175,6 +221,42 @@ const semanticVisible = ref(false);
 const semanticLoading = ref(false);
 const semanticItems = ref<SemanticItem[]>([]);
 const semanticNotice = ref<string | null>(null);
+
+// ---------- 分享（与文件页同一后端端点） ----------
+
+const canShare = computed(() => session.user?.role === 'LEADER' || session.user?.role === 'DEPUTY_LEADER');
+const shareCreateVisible = ref(false);
+const shareCreating = ref(false);
+const shareTarget = ref<SemanticItem | null>(null);
+const shareForm = reactive<{ fileId: string; expiresHours: number }>({ fileId: '', expiresHours: 24 });
+const shareResultVisible = ref(false);
+const shareResultUrl = ref('');
+const shareResultExpires = ref('');
+
+function openShareCreate(item: SemanticItem): void {
+  shareTarget.value = item;
+  shareForm.fileId = item.fileId;
+  shareForm.expiresHours = 24;
+  shareCreateVisible.value = true;
+}
+
+async function submitShareCreate(): Promise<void> {
+  shareCreating.value = true;
+  try {
+    const result = await api<{ url: string; expiresAt: string }>('/shares', {
+      method: 'POST',
+      body: JSON.stringify({ fileId: shareForm.fileId, expiresHours: shareForm.expiresHours }),
+    });
+    shareCreateVisible.value = false;
+    shareResultUrl.value = `${location.origin}${result.url}`;
+    shareResultExpires.value = new Date(result.expiresAt).toLocaleString();
+    shareResultVisible.value = true;
+  } catch (error) {
+    message.error(error instanceof ApiError ? error.message : '生成分享链接失败');
+  } finally {
+    shareCreating.value = false;
+  }
+}
 
 async function semanticSearch(): Promise<void> {
   const query = aiQuery.value.trim();
@@ -438,5 +520,10 @@ onMounted(() => {
   margin-top: 12px;
   color: var(--vd-text-secondary);
   font-size: 13px;
+}
+.share-link {
+  font-family: var(--vd-font-mono);
+  font-size: 13px;
+  word-break: break-all;
 }
 </style>
