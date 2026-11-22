@@ -69,8 +69,54 @@ function isUniqueViolation(error: unknown): boolean {
   );
 }
 
+interface AssignFileBody {
+  fileId: string;
+  categoryId: string;
+}
+
+const assignFileSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['fileId', 'categoryId'],
+  properties: {
+    fileId: { type: 'string', format: 'uuid' },
+    categoryId: { type: 'string', format: 'uuid' },
+  },
+};
+
 @Controller('categories')
 export class CategoriesController {
+  /** AI 分类建议「应用」动作的落库：把文件归入一个分类 */
+  @Post('assign')
+  @HttpCode(200)
+  async assignFile(
+    @Body(new StrictBodyPipe<AssignFileBody>(assignFileSchema)) body: AssignFileBody,
+    @Headers('authorization') authorization?: string,
+  ) {
+    const user = await requireUser(authorization);
+    if (user.role !== 'LEADER' && user.role !== 'DEPUTY_LEADER') {
+      throw new DomainError('AUTH', 'VD-AUTH-404', '无权访问', { status: 404 });
+    }
+    const file = await store.getFile(body.fileId);
+    if (!file || !(await store.canReadFile(user, file))) {
+      throw new DomainError('AUTH', 'VD-AUTH-404', '文件不存在', { status: 404 });
+    }
+    const category = (await store.listCategories()).find((c) => c.categoryId === body.categoryId);
+    if (!category) {
+      throw new DomainError('AUTH', 'VD-AUTH-404', '分类不存在', { status: 404 });
+    }
+    await store.assignFileCategory(file.fileId, category.categoryId);
+    await store.recordAudit({
+      actor: user,
+      action: 'category.assign',
+      objectType: 'file',
+      objectId: file.fileId,
+      result: 'success',
+      detail: JSON.stringify({ fileName: file.fileName, categoryName: category.categoryName }),
+    });
+    return { ok: true, fileId: file.fileId, categoryId: category.categoryId };
+  }
+
   @Get()
   async list(@Headers('authorization') authorization?: string) {
     await requireUser(authorization);

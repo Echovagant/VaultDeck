@@ -547,6 +547,17 @@ class MemoryStore implements StorePort {
     return category;
   }
 
+  private readonly fileCategory = new Map<string, string>();
+
+  async assignFileCategory(fileId: string, categoryId: string | null): Promise<void> {
+    if (categoryId === null) this.fileCategory.delete(fileId);
+    else this.fileCategory.set(fileId, categoryId);
+  }
+
+  async getFileCategoryId(fileId: string): Promise<string | null> {
+    return this.fileCategory.get(fileId) ?? null;
+  }
+
   async deleteCategory(categoryId: string): Promise<void> {
     const category = this.categories.get(categoryId);
     if (!category) throw new Error('CATEGORY_NOT_FOUND');

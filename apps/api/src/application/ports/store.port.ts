@@ -318,6 +318,9 @@ export interface StorePort {
   createCategory(input: CreateCategoryInput): Promise<StoreCategory>;
   updateCategory(input: UpdateCategoryInput): Promise<StoreCategory>;
   deleteCategory(categoryId: string): Promise<void>;
+  /** 把文件归入一个分类（AI 分类建议「应用」动作的落库）；categoryId 传 null 表示清除归类 */
+  assignFileCategory(fileId: string, categoryId: string | null): Promise<void>;
+  getFileCategoryId(fileId: string): Promise<string | null>;
 
   listFiles(projectId: string): Promise<StoreFile[]>;
   getFile(fileId: string): Promise<StoreFile | null>;

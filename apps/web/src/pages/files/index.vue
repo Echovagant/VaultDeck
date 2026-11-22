@@ -55,6 +55,9 @@
 
         <div class="files-toolbar">
           <div class="toolbar-row">
+            <a-button type="text" title="返回项目列表" @click="router.push('/projects')">
+              <ArrowLeftOutlined />
+            </a-button>
             <a-button
               type="text"
               class="aside-toggle"
@@ -456,7 +459,18 @@
             :message="aiClassifyNotice"
             style="margin-bottom: 12px"
           />
-          <p class="settings-hint">建议由 AI 生成，仅作整理参考；应用类目请在「分类」页操作。</p>
+          <div class="apply-bar">
+            <span class="settings-hint">建议由 AI 生成；点击「应用」即把文件归入建议类目，可逐条或全部应用。</span>
+            <a-button
+              type="primary"
+              size="small"
+              :loading="aiApplyingAll"
+              :disabled="aiSuggestions.length === 0"
+              @click="applyAllSuggestions"
+            >
+              全部应用
+            </a-button>
+          </div>
           <a-table
             :columns="aiClassifyColumns"
             :data-source="aiSuggestions"
@@ -469,6 +483,16 @@
               <template v-if="column.key === 'suggestedCategory'">
                 <a-tag color="processing">{{ record.suggestedCategory }}</a-tag>
               </template>
+            <template v-else-if="column.key === 'applyAction'">
+              <a-button
+                type="link"
+                size="small"
+                :loading="aiApplyingId === record.fileId"
+                @click="applySuggestion(record)"
+              >
+                应用
+              </a-button>
+            </template>
             </template>
           </a-table>
         </a-spin>
@@ -479,6 +503,7 @@
 
 <script setup lang="ts">
 import {
+  ArrowLeftOutlined,
   DownOutlined,
   FileOutlined,
   FolderFilled,
@@ -679,6 +704,7 @@ const aiClassifyColumns = [
   { title: '文件', dataIndex: 'fileName', key: 'fileName' },
   { title: '建议类目', key: 'suggestedCategory', width: 130 },
   { title: '理由', dataIndex: 'reason' },
+  { title: '操作', key: 'applyAction', width: 80 },
 ];
 
 async function aiSummarize(file: FileItem): Promise<void> {
@@ -696,6 +722,52 @@ async function aiSummarize(file: FileItem): Promise<void> {
     message.error(error instanceof ApiError ? error.message : 'AI 总结失败');
   } finally {
     aiSummaryLoading.value = false;
+  }
+}
+
+const aiApplyingId = ref('');
+const aiApplyingAll = ref(false);
+
+async function ensureCategoryNamed(name: string): Promise<{ categoryId: string; categoryName: string }> {
+  const categories = await api('/categories');
+  const found = (Array.isArray(categories) ? categories : []).find((c) => c.categoryName === name);
+  if (found) return found;
+  return await api('/categories', {
+    method: 'POST',
+    body: JSON.stringify({
+      categoryCode: 'AI-' + name.slice(0, 8).toUpperCase(),
+      categoryName: name,
+      extensions: [],
+    }),
+  });
+}
+
+async function applySuggestion(item: AiSuggestion): Promise<void> {
+  aiApplyingId.value = item.fileId;
+  try {
+    const category = await ensureCategoryNamed(item.suggestedCategory);
+    await api('/categories/assign', {
+      method: 'POST',
+      body: JSON.stringify({ fileId: item.fileId, categoryId: category.categoryId }),
+    });
+    message.success(`已把「${item.fileName}」归入「${item.suggestedCategory}」`);
+    aiSuggestions.value = aiSuggestions.value.filter((s) => s.fileId !== item.fileId);
+  } catch (error) {
+    message.error(error instanceof ApiError ? error.message : '应用失败');
+  } finally {
+    aiApplyingId.value = '';
+  }
+}
+
+async function applyAllSuggestions() {
+  aiApplyingAll.value = true;
+  try {
+    for (const item of [...aiSuggestions.value]) {
+      await applySuggestion(item);
+    }
+    message.success('全部建议已应用');
+  } finally {
+    aiApplyingAll.value = false;
   }
 }
 
@@ -1431,6 +1503,14 @@ onMounted(async () => {
 .ai-summary-text {
   margin: 0 0 12px;
   line-height: 1.9;
+}
+
+.apply-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
 }
 
 .ai-keywords {

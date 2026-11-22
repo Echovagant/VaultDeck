@@ -113,7 +113,8 @@ async function officeServerAvailable(): Promise<boolean> {
 }
 
 async function fetchContent(file: PreviewFile): Promise<Response> {
-  return fetch(`/api/v1/files/${file.fileId}/content`);
+  // purpose=preview 让服务端把这次访问记为 file.preview 而不是 file.download
+  return fetch(`/api/v1/files/${file.fileId}/content?purpose=preview`);
 }
 
 function escapeHtml(value: string): string {

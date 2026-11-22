@@ -104,54 +104,28 @@
       <p class="panel-note">
         可选组件与其状态。安装或启停需要管理员权限，详细步骤见部署手册对应章节。
       </p>
+      <div class="ext-toolbar">
+        <a-radio-group v-model:value="extFilter" size="small" :options="extFilterOptions" option-type="button" />
+        <a-input-search
+          v-model:value="extKeyword"
+          placeholder="按名称或描述搜索"
+          allow-clear
+          style="max-width: 240px"
+        />
+      </div>
       <div class="ext-grid">
-        <div class="ext-card">
+        <a-empty v-if="visibleExtensions.length === 0" description="没有匹配的扩展" />
+        <div v-for="ext in visibleExtensions" :key="ext.name" class="ext-card">
           <div class="ext-head">
-            <span class="ext-name">pgvector（语义搜索）</span>
-            <a-tag :color="aiBundle?.vectorAvailable ? 'success' : 'default'">
-              {{ aiBundle?.vectorAvailable ? '已启用' : '未安装' }}
-            </a-tag>
+            <span class="ext-name">{{ ext.name }}</span>
+            <a-tag :color="ext.tagColor">{{ ext.tagText }}</a-tag>
           </div>
-          <p class="ext-desc">语义搜索与语义索引的向量存储。未安装时语义功能禁用并提示，其余 AI 功能不受影响。</p>
-          <p v-if="!aiBundle?.vectorAvailable" class="ext-steps">
-            安装：下载 pgvector Windows 包（GitHub pgvector/pgvector Release，按 PG 大版本选）→ 复制
-            vector.dll 与 vector.control 到 PG 的 lib 与 share\extension 目录 → 重启数据库 → 在业务库执行
-            CREATE EXTENSION IF NOT EXISTS vector → 重启本服务。完整步骤见部署手册 5.3。
-          </p>
-          <p v-else class="ext-meta">
-            已索引 {{ aiBundle?.vectorStats?.chunks ?? 0 }} 块 / {{ aiBundle?.vectorStats?.indexedFiles ?? 0 }} 个文件
-            <template v-if="aiBundle?.vectorStats?.model">（模型 {{ aiBundle.vectorStats.model }}）</template>
-          </p>
-        </div>
-        <div class="ext-card">
-          <div class="ext-head">
-            <span class="ext-name">MCP Server</span>
-            <a-tag color="success">内置</a-tag>
-          </div>
-          <p class="ext-desc">
-            把资料库接入外部 AI 助手（Claude Desktop / Cherry Studio / Cursor 等）。零依赖单文件在离线包
-            current\mcp\ 目录，安装说明见同目录 MCP-INSTALL.md；仓库内源码在 apps/mcp-server/。
-          </p>
-        </div>
-        <div class="ext-card">
-          <div class="ext-head">
-            <span class="ext-name">Agent Skill 包</span>
-            <a-tag color="success">Releases 提供</a-tag>
-          </div>
-          <p class="ext-desc">
-            面向千问等支持 Skill 的 AI 助手：从 Releases 页下载 vaultdeck-skill-x.x.x.zip，按包内
-            SKILL.md 安装授权即可用自然语言找文件、总结、分类、上传下载。
-          </p>
-        </div>
-        <div class="ext-card">
-          <div class="ext-head">
-            <span class="ext-name">LibreOffice（pptx 服务端转换）</span>
-            <a-tag color="default">未随包提供</a-tag>
-          </div>
-          <p class="ext-desc">
-            可选组件：安装后 pptx 可服务端转 PDF 预览。为控制离线包体积默认不含；docx / xlsx / pdf
-            预览不依赖它。
-          </p>
+          <p class="ext-desc">{{ ext.desc }}</p>
+          <p v-if="ext.steps" class="ext-steps">{{ ext.steps }}</p>
+          <p v-if="ext.meta" class="ext-meta">{{ ext.meta }}</p>
+          <a-button v-if="ext.guideUrl" type="link" size="small" :href="ext.guideUrl" target="_blank" rel="noopener">
+            查看安装指南
+          </a-button>
         </div>
       </div>
     </div>
@@ -348,6 +322,79 @@ const form = reactive({ username: '', displayName: '', role: 'MEMBER', password:
 
 const grantsLoading = ref(false);
 const aiBundle = ref<AiBundle | null>(null);
+const extFilter = ref('全部');
+const extKeyword = ref('');
+
+interface ExtEntry {
+  name: string;
+  category: string;
+  tagText: string;
+  tagColor: string;
+  desc: string;
+  steps?: string;
+  meta?: string;
+  guideUrl?: string;
+}
+
+const EXT_CATALOG: Array<Omit<ExtEntry, 'steps' | 'meta'>> = [
+  {
+    name: 'pgvector（语义搜索）',
+    category: 'AI 能力',
+    tagText: '已启用',
+    tagColor: 'success',
+    desc: '语义搜索与语义索引的向量存储。未安装时语义功能禁用并提示，其余 AI 功能不受影响。',
+    guideUrl: 'https://github.com/Echovagant/VaultDeck/blob/main/docs/ops/deployment.md',
+  },
+  {
+    name: 'MCP Server',
+    category: '接入',
+    tagText: '内置',
+    tagColor: 'success',
+    desc: '把资料库接入外部 AI 助手（Claude Desktop / Cherry Studio / Cursor 等）。零依赖单文件在离线包 current\\mcp\\ 目录，安装说明见同目录 MCP-INSTALL.md；仓库内源码在 apps/mcp-server/。',
+    guideUrl: 'https://github.com/Echovagant/VaultDeck/blob/main/apps/mcp-server/MCP-INSTALL.md',
+  },
+  {
+    name: 'Agent Skill 包',
+    category: '接入',
+    tagText: 'Releases 提供',
+    tagColor: 'success',
+    desc: '面向千问等支持 Skill 的 AI 助手：下载 vaultdeck-skill-x.x.x.zip，按包内 SKILL.md 安装授权即可用自然语言找文件、总结、分类、上传下载。',
+    guideUrl: 'https://github.com/Echovagant/VaultDeck/releases',
+  },
+  {
+    name: 'LibreOffice（pptx 服务端转换）',
+    category: '文档转换',
+    tagText: '未随包提供',
+    tagColor: 'default',
+    desc: '可选组件：安装后 pptx 可服务端转 PDF 预览。为控制离线包体积默认不含；docx / xlsx / pdf 预览不依赖它。',
+  },
+];
+
+const visibleExtensions = computed<ExtEntry[]>(() => {
+  const keyword = extKeyword.value.trim().toLowerCase();
+  return EXT_CATALOG.filter((ext) => {
+    if (extFilter.value !== '全部' && ext.category !== extFilter.value) return false;
+    if (keyword && !(`${ext.name} ${ext.desc}`.toLowerCase().includes(keyword))) return false;
+    return true;
+  }).map((ext) => {
+    if (!ext.name.startsWith('pgvector')) return ext;
+    const available = aiBundle.value?.vectorAvailable ?? false;
+    const stats = aiBundle.value?.vectorStats;
+    return {
+      ...ext,
+      tagText: available ? '已启用' : '未安装',
+      tagColor: available ? 'success' : 'default',
+      steps: available
+        ? undefined
+        : '安装：下载 pgvector Windows 包（GitHub pgvector/pgvector Release，按 PG 大版本选）→ 复制 vector.dll 与 vector.control 到 PG 的 lib 与 share\\extension 目录 → 重启数据库 → 在业务库执行 CREATE EXTENSION IF NOT EXISTS vector → 重启本服务。完整步骤见部署手册 5.3。',
+      meta: available
+        ? `已索引 ${stats?.chunks ?? 0} 块 / ${stats?.indexedFiles ?? 0} 个文件${stats?.model ? `（模型 ${stats.model}）` : ''}`
+        : undefined,
+    };
+  });
+});
+
+const extFilterOptions = ['全部', 'AI 能力', '接入', '文档转换'];
 const grantSaving = ref(false);
 const grantDialogVisible = ref(false);
 const codeVisible = ref(false);
@@ -676,6 +723,64 @@ onMounted(() => {
   font-size: 13px;
   word-break: break-all;
 }
+.ext-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 12px;
+}
+
+.ext-card {
+  padding: 12px 14px;
+  border: 1px solid var(--vd-border);
+  border-radius: var(--vd-radius);
+  background: var(--vd-surface-sunken, transparent);
+}
+
+.ext-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.ext-name {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.ext-desc {
+  margin: 0 0 4px;
+  color: var(--vd-text-secondary);
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+.ext-steps {
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  border-left: 2px solid var(--vd-accent);
+  background: var(--vd-ochre-soft, rgba(0,0,0,0.03));
+  color: var(--vd-text-secondary);
+  font-size: 11px;
+  line-height: 1.8;
+}
+
+.ext-meta {
+  margin: 0;
+  color: var(--vd-text-secondary);
+  font-family: var(--vd-font-mono);
+  font-size: 11px;
+}
+.ext-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
 .ext-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));

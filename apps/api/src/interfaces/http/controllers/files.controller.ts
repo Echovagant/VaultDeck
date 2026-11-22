@@ -60,6 +60,7 @@ export class FilesController {
   @Get(':fileId/content')
   async content(
     @Param('fileId') fileId: string,
+    @Query('purpose') purposeRaw: string | undefined,
     @Headers('range') rangeHeader: string | undefined,
     @Headers('authorization') authorization: string | undefined,
     @Res({ passthrough: true }) reply: FastifyReply,
@@ -74,9 +75,11 @@ export class FilesController {
       throw new DomainError('AUTH', 'VD-AUTH-404', '文件内容不存在', { status: 404 });
     }
 
+    // 预览弹层与真实下载走同一内容端点：purpose 参数区分审计动作，避免预览被记成下载
+    const action = purposeRaw === 'preview' ? 'file.preview' : 'file.download';
     await store.recordAudit({
       actor: user,
-      action: 'file.download',
+      action,
       objectType: 'file',
       objectId: file.fileId,
       result: 'success',

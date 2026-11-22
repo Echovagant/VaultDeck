@@ -869,6 +869,26 @@ export class PgStore implements StorePort {
     return mapCategory(row);
   }
 
+  async assignFileCategory(fileId: string, categoryId: string | null): Promise<void> {
+    if (categoryId === null) {
+      await this.pool.query('DELETE FROM file_category_assignment WHERE file_id = $1', [fileId]);
+      return;
+    }
+    await this.pool.query(
+      `INSERT INTO file_category_assignment (file_id, category_id) VALUES ($1, $2)
+       ON CONFLICT (file_id) DO UPDATE SET category_id = EXCLUDED.category_id, assigned_at = now()`,
+      [fileId, categoryId],
+    );
+  }
+
+  async getFileCategoryId(fileId: string): Promise<string | null> {
+    const result = await this.pool.query<{ category_id: string }>(
+      'SELECT category_id FROM file_category_assignment WHERE file_id = $1',
+      [fileId],
+    );
+    return result.rows[0]?.category_id ?? null;
+  }
+
   async deleteCategory(categoryId: string): Promise<void> {
     const result = await this.pool.query(
       'DELETE FROM category WHERE category_id = $1 AND is_system = false RETURNING category_id',

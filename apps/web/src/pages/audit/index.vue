@@ -18,7 +18,8 @@
         current: page,
         pageSize,
         total,
-        showSizeChanger: false,
+        showSizeChanger: true,
+        pageSizeOptions: ['10', '50', '100'],
         showTotal: (value: number) => `共 ${value} 条`,
         onChange: go,
       }"
@@ -85,7 +86,13 @@ async function load(targetPage = page.value): Promise<void> {
   }
 }
 
-function go(target: number): void {
+function go(target: number, nextSize?: number): void {
+  if (nextSize && nextSize !== pageSize.value) {
+    pageSize.value = nextSize;
+    page.value = 1;
+    void load(1);
+    return;
+  }
   void load(target);
 }
 
