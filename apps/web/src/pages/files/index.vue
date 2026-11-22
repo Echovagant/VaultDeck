@@ -110,6 +110,7 @@
             <a-button @click="resetFilter">重置</a-button>
             <a-button type="primary" @click="applyFilter">搜索</a-button>
             <a-button :loading="aiClassifyLoading" @click="aiClassify">AI 分类建议</a-button>
+            <a-button v-if="canShare" @click="openShareManager">分享管理</a-button>
             <span class="files-count">
               文件夹 {{ visibleFolders.length }} 个 · 文件 {{ visibleFiles.length }} 个
             </span>
@@ -200,6 +201,15 @@
                 AI 总结
               </a-button>
               <a-button
+                v-if="canShare"
+                type="link"
+                size="small"
+                :disabled="file.hasContent === false"
+                @click="openShareCreate(file)"
+              >
+                分享
+              </a-button>
+              <a-button
                 type="link"
                 size="small"
                 :disabled="file.hasContent === false"
@@ -246,6 +256,14 @@
                   @click="aiSummarize(record)"
                 >
                   AI 总结
+                </a-button>
+                <a-button
+                  v-if="canShare"
+                  type="link"
+                  :disabled="record.hasContent === false"
+                  @click="openShareCreate(record)"
+                >
+                  分享
                 </a-button>
                 <a-button
                   type="link"
@@ -351,6 +369,75 @@
             <a-tag v-for="word in aiSummary.keywords" :key="word">{{ word }}</a-tag>
           </div>
         </a-spin>
+      </a-modal>
+
+      <a-modal
+        v-model:open="shareCreateVisible"
+        title="生成分享链接"
+        :confirm-loading="shareCreating"
+        ok-text="生成链接"
+        cancel-text="取消"
+        @ok="submitShareCreate"
+      >
+        <a-form layout="vertical">
+          <a-form-item label="文件">
+            <a-input :value="shareTarget?.fileName" disabled />
+          </a-form-item>
+          <a-form-item label="有效期">
+            <a-radio-group v-model:value="shareForm.expiresHours">
+              <a-radio :value="1">1 小时</a-radio>
+              <a-radio :value="24">24 小时</a-radio>
+              <a-radio :value="168">7 天</a-radio>
+            </a-radio-group>
+          </a-form-item>
+        </a-form>
+        <p class="settings-hint">
+          链接仅限局域网内访问（公网来源会被拒绝）；到期或撤销后立即失效；下载会记入审计日志。
+        </p>
+      </a-modal>
+
+      <a-modal
+        v-model:open="shareResultVisible"
+        title="分享链接已生成"
+        :footer="null"
+        :destroy-on-close="true"
+      >
+        <p class="settings-hint">链接明文只显示这一次，请立即复制发给同事；过期或撤销后失效。</p>
+        <a-typography-paragraph class="share-link" copyable>{{ shareResultUrl }}</a-typography-paragraph>
+        <p class="settings-hint">有效期至 {{ shareResultExpires }}</p>
+      </a-modal>
+
+      <a-modal
+        v-model:open="shareManageVisible"
+        title="分享管理"
+        :footer="null"
+        width="720px"
+        :destroy-on-close="true"
+      >
+        <p class="settings-hint">限时下载链接仅限局域网内访问；撤销或过期后立即失效，下载计入审计。</p>
+        <a-table
+          :columns="shareColumns"
+          :data-source="shares"
+          :loading="sharesLoading"
+          :pagination="false"
+          row-key="shareId"
+          size="small"
+        >
+          <template #bodyCell="{ column, record }">
+            <template v-if="column.key === 'state'">
+              <a-tag v-if="record.revoked" color="error">已撤销</a-tag>
+              <a-tag v-else color="success">有效</a-tag>
+            </template>
+            <template v-else-if="column.key === 'expiresAt'">
+              {{ new Date(record.expiresAt).toLocaleString() }}
+            </template>
+            <template v-else-if="column.key === 'actions'">
+              <a-button v-if="!record.revoked" type="link" danger size="small" @click="revokeShare(record)">
+                撤销
+              </a-button>
+            </template>
+          </template>
+        </a-table>
       </a-modal>
 
       <a-modal
@@ -499,6 +586,92 @@ const aiSummaryTarget = ref<FileItem | null>(null);
 const aiClassifyVisible = ref(false);
 const aiClassifyLoading = ref(false);
 const aiSuggestions = ref<AiSuggestion[]>([]);
+
+// ---------- 分享/外链（限时令牌下载，仅局域网来源） ----------
+
+interface ShareView {
+  shareId: string;
+  fileId: string;
+  fileName: string;
+  creatorName: string;
+  createdAt: string;
+  expiresAt: string;
+  revoked: boolean;
+  downloadCount: number;
+}
+
+const canShare = computed(() => session.user?.role === 'LEADER' || session.user?.role === 'DEPUTY_LEADER');
+const shareCreateVisible = ref(false);
+const shareCreating = ref(false);
+const shareTarget = ref<FileItem | null>(null);
+const shareForm = reactive<{ fileId: string; expiresHours: number }>({ fileId: '', expiresHours: 24 });
+const shareResultVisible = ref(false);
+const shareResultUrl = ref('');
+const shareResultExpires = ref('');
+
+const shares = ref<ShareView[]>([]);
+const sharesLoading = ref(false);
+const shareManageVisible = ref(false);
+
+const shareColumns = [
+  { title: '文件', dataIndex: 'fileName', key: 'fileName' },
+  { title: '状态', key: 'state', width: 80 },
+  { title: '过期时间', key: 'expiresAt', width: 170 },
+  { title: '下载次数', dataIndex: 'downloadCount', key: 'downloadCount', width: 90 },
+  { title: '操作', key: 'actions', width: 80 },
+];
+
+function openShareCreate(file: FileItem): void {
+  shareTarget.value = file;
+  shareForm.fileId = file.fileId;
+  shareForm.expiresHours = 24;
+  shareCreateVisible.value = true;
+}
+
+async function submitShareCreate(): Promise<void> {
+  shareCreating.value = true;
+  try {
+    const result = await api<ShareView & { token: string; url: string }>('/shares', {
+      method: 'POST',
+      body: JSON.stringify({ fileId: shareForm.fileId, expiresHours: shareForm.expiresHours }),
+    });
+    shareCreateVisible.value = false;
+    shareResultUrl.value = `${location.origin}${result.url}`;
+    shareResultExpires.value = new Date(result.expiresAt).toLocaleString();
+    shareResultVisible.value = true;
+    await loadShares();
+  } catch (error) {
+    message.error(error instanceof ApiError ? error.message : '生成分享链接失败');
+  } finally {
+    shareCreating.value = false;
+  }
+}
+
+async function loadShares(): Promise<void> {
+  sharesLoading.value = true;
+  try {
+    shares.value = await api<ShareView[]>('/shares');
+  } catch {
+    shares.value = [];
+  } finally {
+    sharesLoading.value = false;
+  }
+}
+
+function openShareManager(): void {
+  shareManageVisible.value = true;
+  void loadShares();
+}
+
+async function revokeShare(item: ShareView): Promise<void> {
+  try {
+    await api(`/shares/${item.shareId}`, { method: 'DELETE' });
+    message.success('分享已撤销，链接立即失效');
+    await loadShares();
+  } catch (error) {
+    message.error(error instanceof ApiError ? error.message : '撤销失败');
+  }
+}
 const aiClassifyNotice = ref<string | null>(null);
 
 const aiClassifyColumns = [
