@@ -109,96 +109,104 @@
         <a-button v-else danger class="mfa-action" @click="openMfaDisable"> 停用双重验证 </a-button>
       </div>
 
-      <div v-if="isLeader" class="settings-panel">
+      <div v-if="isLeader" class="settings-panel ai-service-panel">
         <h2 class="settings-title">AI 服务</h2>
-        <a-form layout="vertical">
-          <a-form-item label="供应商">
-            <a-select
-              v-model:value="aiForm.providerId"
-              :options="providerOptions"
-              placeholder="选择模型供应商"
-              allow-clear
-              @change="onProviderChange"
-            />
-          </a-form-item>
-          <a-form-item v-if="selectedProvider?.customEndpoint" label="接入点地址">
-            <a-input
-              v-model:value="aiForm.baseUrl"
-              placeholder="OpenAI 兼容端点，如 http://127.0.0.1:8000/v1"
-              allow-clear
-            />
-          </a-form-item>
-          <a-form-item label="模型">
-            <a-auto-complete
-              v-model:value="aiForm.model"
-              :options="modelOptions"
-              placeholder="保存后可拉取清单，或直接手填模型名"
-            />
-          </a-form-item>
-          <a-form-item label="嵌入模型（语义搜索用）">
-            <a-input
-              v-model:value="aiForm.embeddingModel"
-              placeholder="参考厂商文档，如 embo-01 / embedding-3 / BAAI/bge-m3 / nomic-embed-text"
-              allow-clear
-            />
-            <p class="settings-hint">留空则按所选供应商的默认嵌入模型；更换后需重新执行「重建语义索引」。</p>
-          </a-form-item>
-          <a-form-item v-if="selectedProvider?.effortLevels" label="思考强度">
-            <a-select
-              v-model:value="aiForm.effort"
-              :options="effortOptions"
-              placeholder="跟随供应商默认"
-              allow-clear
-            />
-          </a-form-item>
-          <a-form-item label="API Key">
-            <a-input-password
-              v-model:value="aiForm.apiKey"
-              placeholder="粘贴密钥后保存；已保存的不回显"
-              autocomplete="new-password"
-            />
-          </a-form-item>
-        </a-form>
-
-        <a-alert
-          v-if="aiBundle && !aiBundle.vectorAvailable"
-          type="info"
-          show-icon
-          class="ai-alert"
-          message="语义搜索未启用：PostgreSQL 需安装 pgvector 扩展（见部署手册）；其余 AI 功能不受影响"
-        />
-        <a-alert
-          v-else-if="aiBundle && !aiBundle.encryptionEnabled"
-          type="warning"
-          show-icon
-          class="ai-alert"
-          message="未配置加密密钥（VD_ENCRYPTION_KEY），无法保存 API Key"
-        />
-        <p v-else-if="selectedProvider && selectedProvider.family !== 'local'" class="settings-hint">
-          使用该供应商时，查询语句会发送给该厂商；本机 Ollama 不会出局域网。
-        </p>
-
-        <div class="status-grid ai-status">
-          <div class="status-item">
-            <span class="status-label">API KEY</span>
-            <span class="status-value">{{ aiBundle?.settings.hasApiKey ? '已保存' : '未保存' }}</span>
+        <div class="ai-service-grid">
+          <div class="ai-service-col">
+            <a-form layout="vertical">
+              <a-form-item label="供应商">
+                <a-select
+                  v-model:value="aiForm.providerId"
+                  :options="providerOptions"
+                  placeholder="选择模型供应商"
+                  allow-clear
+                  @change="onProviderChange"
+                />
+              </a-form-item>
+              <a-form-item v-if="selectedProvider?.customEndpoint" label="接入点地址">
+                <a-input
+                  v-model:value="aiForm.baseUrl"
+                  placeholder="OpenAI 兼容端点，如 http://127.0.0.1:8000/v1"
+                  allow-clear
+                />
+              </a-form-item>
+              <a-form-item label="模型">
+                <a-auto-complete
+                  v-model:value="aiForm.model"
+                  :options="modelOptions"
+                  placeholder="保存后可拉取清单，或直接手填模型名"
+                />
+              </a-form-item>
+              <a-form-item label="嵌入模型（语义搜索用）">
+                <a-input
+                  v-model:value="aiForm.embeddingModel"
+                  placeholder="参考厂商文档，如 embo-01 / embedding-3 / BAAI/bge-m3 / nomic-embed-text"
+                  allow-clear
+                />
+                <p class="settings-hint">留空则按所选供应商的默认嵌入模型；更换后需重新执行「重建语义索引」。</p>
+              </a-form-item>
+              <a-form-item v-if="selectedProvider?.effortLevels" label="思考强度">
+                <a-select
+                  v-model:value="aiForm.effort"
+                  :options="effortOptions"
+                  placeholder="跟随供应商默认"
+                  allow-clear
+                />
+              </a-form-item>
+            </a-form>
           </div>
-        </div>
+          <div class="ai-service-col">
+            <a-form layout="vertical">
+              <a-form-item label="API Key">
+                <a-input-password
+                  v-model:value="aiForm.apiKey"
+                  placeholder="粘贴密钥后保存；已保存的不回显"
+                  autocomplete="new-password"
+                />
+              </a-form-item>
+            </a-form>
 
-        <div class="ai-actions">
-          <a-button
-            :loading="aiFetchingModels"
-            :disabled="!selectedProvider?.modelsSupported"
-            @click="fetchModels"
-          >
-            拉取模型清单
-          </a-button>
-          <a-button danger :disabled="!aiBundle?.settings.hasApiKey" @click="clearApiKey">
-            清除密钥
-          </a-button>
-          <a-button type="primary" :loading="aiSaving" @click="saveAiSettings">
-            保存 AI 设置
-          </a-button>
+            <a-alert
+              v-if="aiBundle && !aiBundle.vectorAvailable"
+              type="info"
+              show-icon
+              class="ai-alert"
+              message="语义搜索未启用：PostgreSQL 需安装 pgvector 扩展（见部署手册）；其余 AI 功能不受影响"
+            />
+            <a-alert
+              v-else-if="aiBundle && !aiBundle.encryptionEnabled"
+              type="warning"
+              show-icon
+              class="ai-alert"
+              message="未配置加密密钥（VD_ENCRYPTION_KEY），无法保存 API Key"
+            />
+            <p v-else-if="selectedProvider && selectedProvider.family !== 'local'" class="settings-hint">
+              使用该供应商时，查询语句会发送给该厂商；本机 Ollama 不会出局域网。
+            </p>
+
+            <div class="status-grid ai-status">
+              <div class="status-item">
+                <span class="status-label">API KEY</span>
+                <span class="status-value">{{ aiBundle?.settings.hasApiKey ? '已保存' : '未保存' }}</span>
+              </div>
+            </div>
+
+            <div class="ai-actions">
+              <a-button
+                :loading="aiFetchingModels"
+                :disabled="!selectedProvider?.modelsSupported"
+                @click="fetchModels"
+              >
+                拉取模型清单
+              </a-button>
+              <a-button danger :disabled="!aiBundle?.settings.hasApiKey" @click="clearApiKey">
+                清除密钥
+              </a-button>
+              <a-button type="primary" :loading="aiSaving" @click="saveAiSettings">
+                保存 AI 设置
+              </a-button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -606,9 +614,27 @@ onMounted(() => {
 <style scoped>
 .settings-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
-  align-items: stretch;
+  align-items: start; /* 卡片按内容自适应高度：内容多的卡不再把同行其他卡拉高留白 */
+}
+
+/* AI 服务内容量远大于其他卡：独立占满一整行，内部左右两栏，避免把网格行高撑爆 */
+.ai-service-panel {
+  grid-column: 1 / -1;
+  margin-top: 2px;
+}
+
+.ai-service-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0 28px;
+}
+
+@media (max-width: 900px) {
+  .ai-service-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .settings-panel {
