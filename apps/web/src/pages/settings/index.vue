@@ -12,34 +12,32 @@
       <div class="settings-panel">
         <h2 class="settings-title">上传与存储</h2>
         <a-form layout="vertical" :model="form">
-          <a-form-item label="单文件上传上限（GB）">
-            <a-input-number
-              v-model:value="form.maxUploadGb"
-              :min="0.1"
-              :max="200"
-              :step="0.5"
-              style="width: 100%"
-            />
-            <p class="settings-hint">超过上限的文件会在预检阶段被拒绝。</p>
-          </a-form-item>
-          <a-form-item label="分片大小（MB）">
-            <a-input-number
-              v-model:value="form.chunkSizeMb"
-              :min="1"
-              :max="64"
-              :step="1"
-              style="width: 100%"
-            />
-            <p class="settings-hint">只影响之后新建的上传会话。</p>
-          </a-form-item>
+          <div class="upload-num-row">
+            <a-form-item label="单文件上传上限（GB）">
+              <a-input-number
+                v-model:value="form.maxUploadGb"
+                :min="0.1"
+                :max="200"
+                :step="0.5"
+                style="width: 100%"
+              />
+              <p class="settings-hint">超过上限的文件会在预检阶段被拒绝。</p>
+            </a-form-item>
+            <a-form-item label="分片大小（MB）">
+              <a-input-number
+                v-model:value="form.chunkSizeMb"
+                :min="1"
+                :max="64"
+                :step="1"
+                style="width: 100%"
+              />
+              <p class="settings-hint">只影响之后新建的上传会话。</p>
+            </a-form-item>
+          </div>
           <a-form-item label="启用秒传">
             <a-switch v-model:checked="form.instantUploadEnabled" />
             <p class="settings-hint">
-              仅对系统中已存在的相同文件生效（校验同哈希后不再传输内容）；单文件上限
-              {{
-                form.maxUploadGb
-              }}
-              GB。命中前仍需在浏览器计算文件指纹，大文件需要数十秒；首次上传按实际大小传输，速率以进度旁实测为准。
+              仅对已存在的相同文件生效，命中后不再传输内容；命中前需在浏览器计算文件指纹。
             </p>
           </a-form-item>
         </a-form>
@@ -612,6 +610,26 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.settings-grid .ant-form-item {
+  margin-bottom: 14px;
+}
+
+.settings-grid .settings-hint {
+  line-height: 1.6;
+}
+
+.upload-num-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 14px;
+}
+
+@media (max-width: 760px) {
+  .upload-num-row {
+    grid-template-columns: 1fr;
+  }
+}
+
 .settings-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
