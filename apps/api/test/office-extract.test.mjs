@@ -74,7 +74,7 @@ describe('office-extract', () => {
     const xml = Buffer.from(
       '<?xml version="1.0" encoding="UTF-8"?><w:document xmlns:w="urn:doc"><w:body><w:p><w:r><w:t>压缩正文内容</w:t></w:r></w:p></w:body></w:document>',
     );
-    const deflated = deflateSync(xml);
+    const deflated = deflateRawSync(xml);
     const name = Buffer.from('word/document.xml');
     const local = Buffer.alloc(30);
     local.writeUInt32LE(0x04034b50, 0);
