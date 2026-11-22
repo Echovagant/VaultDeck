@@ -1,12 +1,18 @@
 import { Body, Controller, Get, Headers, HttpCode, Patch, Post } from '@nestjs/common';
+import { readFile } from 'node:fs/promises';
 
 import { findProvider } from '@vaultdeck/llm';
 
 import type { AiSettingsPatchInput } from '../../../application/ports/store.port';
 import { classifyFiles, toClassifyInputs } from '../../../application/use-cases/classify-files';
 import { parseNaturalSearch } from '../../../application/use-cases/parse-natural-search';
-import { isSummarizable, summarizeFile } from '../../../application/use-cases/summarize-file';
+import {
+  MAX_EXTRACT_SOURCE_BYTES,
+  summarizableKind,
+  summarizeFile,
+} from '../../../application/use-cases/summarize-file';
 import { encryptionEnabled } from '../../../infrastructure/crypto/at-rest';
+import { extractDocxText, extractXlsxText } from '../../../infrastructure/extract/office-extract';
 import { logger } from '../../../infrastructure/logging/logger';
 import { aiProvidersCatalog, chatWith, pullModelIds, resolveAiConfig } from '../../../infrastructure/llm/ai-engine';
 import { objectStorage } from '../../../infrastructure/memory/upload-sessions';
@@ -221,6 +227,43 @@ export class AiController {
     }
   }
 
+  /** 按类型提取文本：纯文本直接读，docx/xlsx 走 OOXML 解包，pdf 走 unpdf 文本层 */
+  private async extractFileText(
+    file: { fileName: string; objectPath: string },
+    kind: 'text' | 'docx' | 'xlsx' | 'pdf',
+    sourceBytes: number,
+  ): Promise<string | null> {
+    const materialized = await objectStorage.materializePlaintext(file.objectPath, file.fileName);
+    try {
+      if (kind === 'text') {
+        const limit = Math.min(sourceBytes, SUMMARY_INPUT_LIMIT);
+        return await this.readTextExcerpt(file.objectPath, limit);
+      }
+      if (kind === 'docx') {
+        const data = await readFile(materialized.path);
+        return extractDocxText(data);
+      }
+      if (kind === 'xlsx') {
+        const data = await readFile(materialized.path);
+        return extractXlsxText(data);
+      }
+      const { extractText, getDocumentProxy } = await import('unpdf');
+      const buffer = await readFile(materialized.path);
+      const pdf = await getDocumentProxy(new Uint8Array(buffer));
+      const { text } = await extractText(pdf, { mergePages: true });
+      const merged = Array.isArray(text) ? text.join('\n') : text;
+      return merged && merged.trim() ? merged : null;
+    } catch (error) {
+      logger.warn('ai.extract_failed', {
+        file: file.fileName,
+        message: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    } finally {
+      await objectStorage.cleanupMaterialized(materialized);
+    }
+  }
+
   @Post('summarize')
   @HttpCode(200)
   async summarize(
@@ -235,10 +278,14 @@ export class AiController {
     if (!file.objectPath) {
       throw new DomainError('AUTH', 'VD-AUTH-404', '文件内容不存在', { status: 404 });
     }
-    if (!isSummarizable(file.fileName, file.contentType)) {
-      throw new DomainError('SYS', 'VD-SYS-501', '该文件类型暂不支持 AI 总结（当前支持纯文本类）', {
-        status: 415,
-      });
+    const kind = summarizableKind(file.fileName, file.contentType);
+    if (!kind) {
+      throw new DomainError(
+        'SYS',
+        'VD-SYS-501',
+        '该文件类型暂不支持 AI 总结（当前支持纯文本类与 docx/xlsx/pdf）',
+        { status: 415 },
+      );
     }
 
     const settings = await store.getAiSettings();
@@ -248,13 +295,21 @@ export class AiController {
     }
 
     const size = await objectStorage.plaintextSize(file.objectPath).catch(() => 0);
-    const limit = Math.min(size, SUMMARY_INPUT_LIMIT);
-    const content = (await this.readTextExcerpt(file.objectPath, limit)) ?? '';
-    if (!content.trim()) {
-      throw new DomainError('SYS', 'VD-SYS-502', '文件内容为空或不可读', { status: 502 });
+    if (kind !== 'text' && size > MAX_EXTRACT_SOURCE_BYTES) {
+      throw new DomainError('SYS', 'VD-SYS-501', '文件过大，超出 AI 总结的提取上限（50MB）', {
+        status: 415,
+      });
     }
 
-    const result = await summarizeFile(file.fileName, content, chatWith(config), (error) => {
+    const content = (await this.extractFileText(file, kind, size)) ?? '';
+    if (!content.trim()) {
+      throw new DomainError('SYS', 'VD-SYS-502', '文件内容为空或不可读（扫描件与纯图 PDF 无文本层）', {
+        status: 502,
+      });
+    }
+    const trimmed = content.slice(0, SUMMARY_INPUT_LIMIT);
+
+    const result = await summarizeFile(file.fileName, trimmed, chatWith(config), (error) => {
       logger.warn('ai.summarize_failed', {
         message: error instanceof Error ? error.message : String(error),
       });
@@ -301,7 +356,7 @@ export class AiController {
     const inputs = [];
     for (const file of limited) {
       const excerpt =
-        file.objectPath && isSummarizable(file.fileName, file.contentType)
+        file.objectPath && summarizableKind(file.fileName, file.contentType)
           ? await this.readTextExcerpt(file.objectPath, CLASSIFY_EXCERPT_BYTES)
           : null;
       inputs.push({

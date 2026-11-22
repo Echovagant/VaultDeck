@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 
 import {
   buildSummarizePrompt,
-  isSummarizable,
+  summarizableKind,
   summarizeFile,
 } from '../src/application/use-cases/summarize-file.ts';
 import {
@@ -13,13 +13,19 @@ import {
   toClassifyInputs,
 } from '../src/application/use-cases/classify-files.ts';
 
-describe('isSummarizable', () => {
-  it('文本扩展名与 text/* 可总结，二进制拒绝', () => {
-    assert.equal(isSummarizable('纪要.txt', 'text/plain'), true);
-    assert.equal(isSummarizable('报告.md', undefined), true);
-    assert.equal(isSummarizable('数据.csv', 'application/octet-stream'), true);
-    assert.equal(isSummarizable('照片.jpg', 'image/jpeg'), false);
-    assert.equal(isSummarizable('大文件.bin', 'application/octet-stream'), false);
+describe('summarizableKind', () => {
+  it('文本扩展名与 text/* → text，二进制拒绝', () => {
+    assert.equal(summarizableKind('纪要.txt', 'text/plain'), 'text');
+    assert.equal(summarizableKind('报告.md', undefined), 'text');
+    assert.equal(summarizableKind('数据.csv', 'application/octet-stream'), 'text');
+    assert.equal(summarizableKind('照片.jpg', 'image/jpeg'), null);
+    assert.equal(summarizableKind('大文件.bin', 'application/octet-stream'), null);
+  });
+
+  it('docx/xlsx/pdf 识别为对应提取通道', () => {
+    assert.equal(summarizableKind('合同.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'), 'docx');
+    assert.equal(summarizableKind('表格.xlsx', undefined), 'xlsx');
+    assert.equal(summarizableKind('说明.pdf', 'application/pdf'), 'pdf');
   });
 });
 

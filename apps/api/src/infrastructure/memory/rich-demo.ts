@@ -10,6 +10,7 @@
  */
 import { createHash, randomUUID } from 'node:crypto';
 
+import { buildStoredZip } from '../extract/office-extract';
 import { store } from '../store';
 import { objectStorage } from './upload-sessions';
 import { logger } from '../logging/logger';
@@ -66,67 +67,7 @@ const BASE_DATE = new Date('2026-11-21T09:00:00+08:00');
 // 目的：给前端预览弹层（docx-preview / ExcelJS / 浏览器原生 PDF）提供真实可渲染的样本。
 // 不依赖 LibreOffice：docx = 手写 OOXML 打 stored-zip；pdf = 手写最小 PDF 1.4（英文，
 // 中文需嵌入字体，成本不成比例）；xlsx = exceljs（web 工作区依赖被 hoist 到根，dev 环境可用）。
-
-const CRC_TABLE = (() => {
-  const table = new Uint32Array(256);
-  for (let i = 0; i < 256; i += 1) {
-    let value = i;
-    for (let bit = 0; bit < 8; bit += 1) {
-      value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
-    }
-    table[i] = value >>> 0;
-  }
-  return table;
-})();
-
-function crc32(data: Buffer): number {
-  let value = 0xffffffff;
-  for (const byte of data) value = CRC_TABLE[(value ^ byte) & 0xff]! ^ (value >>> 8);
-  return (value ^ 0xffffffff) >>> 0;
-}
-
-/** 无压缩（stored）zip 打包：docx/xlsx 这类 XML 小包足够，避免引入 zip 依赖 */
-function buildStoredZip(entries: Array<{ name: string; data: Buffer }>): Buffer {
-  const localParts: Buffer[] = [];
-  const centralParts: Buffer[] = [];
-  let offset = 0;
-  for (const entry of entries) {
-    const nameBuf = Buffer.from(entry.name, 'utf8');
-    const crc = crc32(entry.data);
-    const local = Buffer.alloc(30);
-    local.writeUInt32LE(0x04034b50, 0);
-    local.writeUInt16LE(20, 4); // version needed
-    local.writeUInt16LE(0x0800, 6); // UTF-8 name flag
-    local.writeUInt16LE(0, 8); // stored
-    local.writeUInt32LE(crc, 14);
-    local.writeUInt32LE(entry.data.length, 18);
-    local.writeUInt32LE(entry.data.length, 22);
-    local.writeUInt16LE(nameBuf.length, 26);
-    localParts.push(local, nameBuf, entry.data);
-
-    const central = Buffer.alloc(46);
-    central.writeUInt32LE(0x02014b50, 0);
-    central.writeUInt16LE(20, 4);
-    central.writeUInt16LE(20, 6);
-    central.writeUInt16LE(0x0800, 8);
-    central.writeUInt16LE(0, 10);
-    central.writeUInt32LE(crc, 16);
-    central.writeUInt32LE(entry.data.length, 20);
-    central.writeUInt32LE(entry.data.length, 24);
-    central.writeUInt16LE(nameBuf.length, 28);
-    central.writeUInt32LE(offset, 42);
-    centralParts.push(central, nameBuf);
-    offset += local.length + nameBuf.length + entry.data.length;
-  }
-  const centralSize = centralParts.reduce((sum, part) => sum + part.length, 0);
-  const end = Buffer.alloc(22);
-  end.writeUInt32LE(0x06054b50, 0);
-  end.writeUInt16LE(entries.length, 8);
-  end.writeUInt16LE(entries.length, 10);
-  end.writeUInt32LE(centralSize, 12);
-  end.writeUInt32LE(offset, 16);
-  return Buffer.concat([...localParts, ...centralParts, end]);
-}
+// zip 打包与解析统一走 infrastructure/extract/office-extract（读写互为测试验证）。
 
 function buildDocxSample(): Buffer {
   const paragraphs = [

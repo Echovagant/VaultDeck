@@ -18,14 +18,28 @@ export interface FileSummary {
 
 export type ChatFn = (prompt: string) => Promise<string>;
 
-/** 可总结的扩展名（纯文本家族）；二进制格式 v1 不支持，明确拒绝而非硬猜 */
-const SUMMARIZABLE_EXTENSIONS = ['.txt', '.md', '.csv', '.log', '.json'];
+/** 纯文本家族直接读内容；docx/xlsx 走 OOXML 提取，pdf 走 unpdf 文本层（见 ai.controller） */
+const TEXT_EXTENSIONS = ['.txt', '.md', '.csv', '.log', '.json'];
+const OFFICE_EXTENSIONS = ['.docx', '.xlsx'];
+const PDF_EXTENSION = '.pdf';
 export const MAX_SUMMARY_INPUT_BYTES = 512 * 1024;
+/** 二进制提取的源文件大小上限：控制解包与解析的内存峰值 */
+export const MAX_EXTRACT_SOURCE_BYTES = 50 * 1024 * 1024;
 
-export function isSummarizable(fileName: string, contentType: string | undefined): boolean {
+export type SummarizableKind = 'text' | 'docx' | 'xlsx' | 'pdf';
+
+export function summarizableKind(
+  fileName: string,
+  contentType: string | undefined,
+): SummarizableKind | null {
   const lower = fileName.toLowerCase();
-  if (SUMMARIZABLE_EXTENSIONS.some((ext) => lower.endsWith(ext))) return true;
-  return Boolean(contentType && contentType.startsWith('text/'));
+  if (TEXT_EXTENSIONS.some((ext) => lower.endsWith(ext))) return 'text';
+  if (contentType && contentType.startsWith('text/')) return 'text';
+  if (OFFICE_EXTENSIONS.some((ext) => lower.endsWith(ext))) {
+    return lower.endsWith('.docx') ? 'docx' : 'xlsx';
+  }
+  if (lower.endsWith(PDF_EXTENSION)) return 'pdf';
+  return null;
 }
 
 export function buildSummarizePrompt(fileName: string, content: string): string {

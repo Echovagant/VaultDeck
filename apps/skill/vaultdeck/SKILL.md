@@ -31,6 +31,12 @@ node scripts/vaultdeck.mjs search --keyword 合同 --from 2026-11-01 --to 2026-1
 # AI 找文件：一句话描述，服务端用已配置的模型解析成条件再检索（无需自带模型 key）
 node scripts/vaultdeck.mjs ai-find "上周上传的超过100MB的视频"
 
+# AI 总结：对单个纯文本类文件（txt/md/csv/log/json）输出摘要与关键词
+node scripts/vaultdeck.mjs summarize <fileId>
+
+# AI 分类建议：对项目内文件批量给出类目建议与理由（只提议，不自动落库）
+node scripts/vaultdeck.mjs classify --project <projectId>
+
 # 下载（fileId 来自 search / ai-find 的输出）
 node scripts/vaultdeck.mjs download <fileId> ./保存位置.bin
 
