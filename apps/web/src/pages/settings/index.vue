@@ -135,6 +135,14 @@
               placeholder="保存后可拉取清单，或直接手填模型名"
             />
           </a-form-item>
+          <a-form-item label="嵌入模型（语义搜索用）">
+            <a-input
+              v-model:value="aiForm.embeddingModel"
+              placeholder="参考厂商文档，如 embo-01 / embedding-3 / BAAI/bge-m3 / nomic-embed-text"
+              allow-clear
+            />
+            <p class="settings-hint">留空则按所选供应商的默认嵌入模型；更换后需重新执行「重建语义索引」。</p>
+          </a-form-item>
           <a-form-item v-if="selectedProvider?.effortLevels" label="思考强度">
             <a-select
               v-model:value="aiForm.effort"
@@ -285,6 +293,7 @@ interface AiSettingsView {
   baseUrl: string | null;
   model: string | null;
   effort: string | null;
+  embeddingModel: string | null;
   hasApiKey: boolean;
 }
 
@@ -465,8 +474,9 @@ const aiForm = reactive<{
   baseUrl: string;
   model: string;
   effort: string | null;
+  embeddingModel: string;
   apiKey: string;
-}>({ providerId: null, baseUrl: '', model: '', effort: null, apiKey: '' });
+}>({ providerId: null, baseUrl: '', model: '', effort: null, embeddingModel: '', apiKey: '' });
 
 const selectedProvider = computed<AiProviderEntry | null>(
   () => aiBundle.value?.providers.find((p) => p.id === aiForm.providerId) ?? null,
@@ -497,6 +507,7 @@ async function loadAi(): Promise<void> {
     aiForm.baseUrl = bundle.settings.baseUrl ?? '';
     aiForm.model = bundle.settings.model ?? '';
     aiForm.effort = bundle.settings.effort;
+    aiForm.embeddingModel = bundle.settings.embeddingModel ?? '';
     aiForm.apiKey = '';
   } catch (error) {
     message.error(error instanceof ApiError ? error.message : '加载 AI 设置失败');
@@ -509,6 +520,7 @@ function fillAiFormFromBundle(bundle: AiBundle): void {
   aiForm.baseUrl = bundle.settings.baseUrl ?? '';
   aiForm.model = bundle.settings.model ?? '';
   aiForm.effort = bundle.settings.effort;
+  aiForm.embeddingModel = bundle.settings.embeddingModel ?? '';
   aiForm.apiKey = '';
 }
 
@@ -524,6 +536,7 @@ async function saveAiSettings(): Promise<void> {
       baseUrl: aiForm.baseUrl.trim() || null,
       model: aiForm.model.trim() || null,
       effort: aiForm.effort,
+      embeddingModel: aiForm.embeddingModel.trim() || null,
     };
     // 密钥只在输入框非空时随发；已保存的密钥不回显也不重传
     if (aiForm.apiKey.trim()) body['apiKey'] = aiForm.apiKey.trim();

@@ -264,6 +264,29 @@ async function upload() {
   console.log(`上传完成：${file.fileName}（${formatBytes(file.sizeBytes)}），fileId=${file.fileId}`);
 }
 
+async function semanticSearch() {
+  const query = args._[1];
+  if (!query) fail('用法：semantic-search "磁盘告警的处置流程" [--project <projectId>] [--limit 10]');
+  const body = { query: String(query).slice(0, 300) };
+  if (args.project) body.projectId = args.project;
+  if (args.limit) body.limit = Number(args.limit) || 10;
+  const result = await api('/ai/semantic-search', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (result.notice) console.log(`提示：${result.notice}`);
+  if (!result.items || result.items.length === 0) {
+    console.log('（语义检索没有找到相关内容）');
+    return;
+  }
+  console.log(`共 ${result.items.length} 条语义命中：`);
+  for (const item of result.items) {
+    console.log(`${item.fileId}  ${item.fileName}（相似度 ${(item.score * 100).toFixed(0)}%）`);
+    console.log(`    摘录：${item.excerpt.slice(0, 120)}`);
+  }
+}
+
 const HANDLERS = {
   exchange,
   projects,
@@ -271,12 +294,13 @@ const HANDLERS = {
   'ai-find': aiFind,
   summarize,
   classify,
+  'semantic-search': semanticSearch,
   download,
   upload,
 };
 const handler = HANDLERS[command];
 if (!handler) {
-  console.log('用法：node vaultdeck.mjs <命令>\n  exchange   授权码换令牌（--url --code）\n  projects   项目清单\n  search     条件搜索（--keyword --from --to --min-size --max-size --ext --project）\n  ai-find    AI 自然语言找文件\n  summarize  AI 总结一个文件（<fileId>）\n  classify   AI 分类建议（--project <projectId>）\n  download   下载（<fileId> <保存路径>）\n  upload     上传（<本地文件> --project <projectId>）');
+  console.log('用法：node vaultdeck.mjs <命令>\n  exchange   授权码换令牌（--url --code）\n  projects   项目清单\n  search     条件搜索（--keyword --from --to --min-size --max-size --ext --project）\n  ai-find    AI 自然语言找文件\n  summarize  AI 总结一个文件（<fileId>）\n  classify   AI 分类建议（--project <projectId>）\n  semantic-search 语义搜索（语义索引需领队先建，--project --limit）\n  download   下载（<fileId> <保存路径>）\n  upload     上传（<本地文件> --project <projectId>）');
   process.exit(command ? 1 : 0);
 }
 await handler();

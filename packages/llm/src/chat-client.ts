@@ -353,3 +353,85 @@ export function parseChatReply(text: string): { reply: string; model: string } {
   }
   return { reply: '', model };
 }
+
+/**
+ * 文本嵌入（embeddings）：POST {base}/embeddings（OpenAI 兼容），
+ * 返回与输入等长的向量数组。厂商特有附加体（如 MiniMax 的 type=db/query）由
+ * extraBody 合并进请求体。密钥红线与 chatOnce 相同：不落盘、错误脱敏。
+ */
+export interface EmbedOptions {
+  readonly apiKey: string;
+  readonly baseUrl: string;
+  readonly model: string;
+  readonly input: readonly string[];
+  /** 厂商特有附加体（如 MiniMax {type:"db"}），合并进请求体顶层 */
+  readonly extraBody?: Readonly<Record<string, unknown>> | undefined;
+  /** 线协议：openai = input/data；minimax = texts/vectors（实测 2026-11） */
+  readonly wire?: 'openai' | 'minimax' | undefined;
+  readonly fetchImpl?: HttpFetch | undefined;
+}
+
+export async function embedOnce(
+  options: EmbedOptions,
+): Promise<{ embeddings: readonly (readonly number[])[]; model: string }> {
+  const doFetch = options.fetchImpl ?? defaultFetch;
+  const url = endpoint(options.baseUrl, '/embeddings');
+  const payload: Record<string, unknown> =
+    options.wire === 'minimax'
+      ? {
+          model: options.model,
+          texts: [...options.input],
+          ...(options.extraBody ?? {}),
+        }
+      : {
+          model: options.model,
+          input: [...options.input],
+          ...(options.extraBody ?? {}),
+        };
+
+  let res: HttpResponseLike;
+  try {
+    res = await doFetch(url, {
+      method: 'POST',
+      headers: headers(options.apiKey),
+      body: JSON.stringify(payload),
+    });
+  } catch (err) {
+    throw new LlmApiError(
+      redactSecrets(`连不上模型服务 ${options.baseUrl}：${(err as Error).message}`, [options.apiKey]),
+      0,
+    );
+  }
+  const text = await res.text();
+  if (!res.ok) {
+    const detail = extractErrorMessage(text);
+    throw new LlmApiError(
+      redactSecrets(detail ? `模型服务返回 ${res.status}：${detail}` : `模型服务返回 ${res.status}`, [options.apiKey]),
+      res.status,
+    );
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new LlmApiError('模型服务返回了无法解析的嵌入响应', res.status ?? 200);
+  }
+  // MiniMax 线返回 {vectors:[[...]]}；OpenAI 线返回 {data:[{embedding:[...]}]}
+  const rawVectors = (parsed as { vectors?: unknown }).vectors;
+  const embeddings: ReadonlyArray<readonly number[]> = Array.isArray(rawVectors)
+    ? (rawVectors as unknown[]).map((vec) => {
+        if (!Array.isArray(vec)) throw new LlmApiError('嵌入响应缺少向量', res.status ?? 200);
+        return Object.freeze(vec.map((n) => Number(n)));
+      })
+    : (() => {
+        const data = (parsed as { data?: Array<{ embedding?: unknown }> }).data;
+        if (!Array.isArray(data)) throw new LlmApiError('嵌入响应缺少 data 数组', res.status ?? 200);
+        return data.map((item) => {
+          if (!Array.isArray(item.embedding)) throw new LlmApiError('嵌入响应缺少向量', res.status ?? 200);
+          return Object.freeze(item.embedding.map((n) => Number(n)));
+        });
+      })();
+  const model = typeof (parsed as { model?: unknown }).model === 'string' ? (parsed as { model: string }).model : options.model;
+  return { embeddings, model };
+}

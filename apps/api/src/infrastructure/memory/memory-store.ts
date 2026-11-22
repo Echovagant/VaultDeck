@@ -81,9 +81,10 @@ class MemoryStore implements StorePort {
     baseUrl: string | null;
     model: string | null;
     effort: string | null;
+    embeddingModel: string | null;
     apiKey: string | null;
   } = {
-    ...(loadPersistedAiProfile() ?? { providerId: null, baseUrl: null, model: null, effort: null }),
+    ...(loadPersistedAiProfile() ?? { providerId: null, baseUrl: null, model: null, effort: null, embeddingModel: null }),
     apiKey: loadPersistedAiKey(),
   };
   // Agent 授权：码与 token 只存 hash，明文不落内存之外的任何地方
@@ -235,6 +236,7 @@ class MemoryStore implements StorePort {
     if (patch.baseUrl !== undefined) this.ai.baseUrl = patch.baseUrl;
     if (patch.model !== undefined) this.ai.model = patch.model;
     if (patch.effort !== undefined) this.ai.effort = patch.effort;
+    if (patch.embeddingModel !== undefined) this.ai.embeddingModel = patch.embeddingModel;
     if (patch.apiKey !== undefined) {
       this.ai.apiKey = patch.apiKey;
       // 密封落盘（仓库外）；落盘失败退化为内存-only，保存本身不受影响
@@ -246,6 +248,7 @@ class MemoryStore implements StorePort {
       baseUrl: this.ai.baseUrl,
       model: this.ai.model,
       effort: this.ai.effort,
+      embeddingModel: this.ai.embeddingModel,
     });
     return this.getAiSettings();
   }

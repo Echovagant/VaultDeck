@@ -48,6 +48,56 @@ const AI_TIMEOUT_MS = Number(process.env['VD_AI_TIMEOUT_MS'] ?? 60_000);
 const timeoutFetch: ChatOptions['fetchImpl'] = (url, init) =>
   fetch(url, { ...(init as RequestInit), signal: AbortSignal.timeout(AI_TIMEOUT_MS) });
 
+/** 文本嵌入调用配置：嵌入模型可由设置页指定，缺省取目录里该线的第一个嵌入模型 */
+export interface ResolvedEmbeddingConfig {
+  apiKey: string;
+  baseUrl: string;
+  model: string;
+  wire: 'openai' | 'minimax';
+  storeBody?: Record<string, unknown>;
+  queryBody?: Record<string, unknown>;
+}
+
+export function resolveEmbeddingConfig(
+  settings: AiSettingsView,
+  apiKey: string | null,
+): ResolvedEmbeddingConfig | null {
+  if (!apiKey || !settings.providerId) return null;
+  const provider = findProvider(settings.providerId);
+  const baseUrl = settings.baseUrl?.trim() || provider?.baseUrl || '';
+  const model = settings.embeddingModel?.trim() || provider?.embeddingsModels?.[0] || '';
+  if (!baseUrl || !model) return null;
+  return {
+    apiKey,
+    baseUrl,
+    model,
+    wire: provider?.embeddingsWire ?? 'openai',
+    ...(provider?.embeddingStoreBody ? { storeBody: { ...provider.embeddingStoreBody } } : {}),
+    ...(provider?.embeddingQueryBody ? { queryBody: { ...provider.embeddingQueryBody } } : {}),
+  };
+}
+
+/** 批量嵌入：OpenAI 兼容 /embeddings，input 数组一次请求；厂商特有附加体按用途合并 */
+export async function embedTexts(
+  config: ResolvedEmbeddingConfig,
+  texts: readonly string[],
+  purpose: 'store' | 'query',
+): Promise<number[][]> {
+  const extraBody = purpose === 'store' ? config.storeBody : config.queryBody;
+  const { embedOnce } = await import('@vaultdeck/llm');
+  const result = await embedOnce({
+    apiKey: config.apiKey,
+    baseUrl: config.baseUrl,
+    model: config.model,
+    input: texts,
+    wire: config.wire,
+    ...(extraBody ? { extraBody } : {}),
+    fetchImpl: (url, init) =>
+      fetch(url, { ...(init as RequestInit), signal: AbortSignal.timeout(AI_TIMEOUT_MS) }),
+  });
+  return result.embeddings.map((vector) => [...vector]);
+}
+
 /** 把配置包成「提示词 → 回话正文」的对话函数（parse-natural-search 的 ChatFn 形态） */
 export function chatWith(config: ResolvedAiConfig): (prompt: string) => Promise<string> {
   // exactOptionalPropertyTypes 下 effort?: string 不允许显式赋 undefined，条件展开

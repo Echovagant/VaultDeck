@@ -5,6 +5,7 @@ import { findProvider } from '@vaultdeck/llm';
 
 import type { AiSettingsPatchInput } from '../../../application/ports/store.port';
 import { classifyFiles, toClassifyInputs } from '../../../application/use-cases/classify-files';
+import { chunkText } from '../../../application/use-cases/chunk-text';
 import { parseNaturalSearch } from '../../../application/use-cases/parse-natural-search';
 import {
   MAX_EXTRACT_SOURCE_BYTES,
@@ -14,9 +15,17 @@ import {
 import { encryptionEnabled } from '../../../infrastructure/crypto/at-rest';
 import { extractDocxText, extractXlsxText } from '../../../infrastructure/extract/office-extract';
 import { logger } from '../../../infrastructure/logging/logger';
-import { aiProvidersCatalog, chatWith, pullModelIds, resolveAiConfig } from '../../../infrastructure/llm/ai-engine';
+import {
+  aiProvidersCatalog,
+  chatWith,
+  embedTexts,
+  pullModelIds,
+  resolveAiConfig,
+  resolveEmbeddingConfig,
+} from '../../../infrastructure/llm/ai-engine';
 import { objectStorage } from '../../../infrastructure/memory/upload-sessions';
 import { store, storeKind } from '../../../infrastructure/store';
+import { vectorStore } from '../../../infrastructure/vector';
 import { DomainError } from '../errors/problem-details';
 import { StrictBodyPipe } from '../validation/strict-body.pipe';
 import { requireUser } from './auth.controller';
@@ -69,6 +78,42 @@ const fileIdSchema = {
     fileId: { type: 'string', format: 'uuid' },
   },
 };
+
+interface SemanticSearchBody {
+  query: string;
+  projectId?: string | null;
+  limit?: number;
+}
+
+const semanticSearchSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['query'],
+  properties: {
+    query: { type: 'string', minLength: 1, maxLength: 300 },
+    projectId: { type: ['string', 'null'], format: 'uuid' },
+    limit: { type: 'integer', minimum: 1, maximum: 50 },
+  },
+};
+
+interface ReindexBody {
+  projectId: string;
+}
+
+const reindexSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['projectId'],
+  properties: {
+    projectId: { type: 'string', format: 'uuid' },
+  },
+};
+
+interface ExtractedFileInput {
+  fileId: string;
+  fileName: string;
+  content: string | null;
+}
 
 interface ProjectIdBody {
   projectId: string;
@@ -384,5 +429,189 @@ export class AiController {
       detail: JSON.stringify({ scanned: inputs.length, suggested: suggestions.length }),
     });
     return { suggestions, notice: files.length > CLASSIFY_BATCH_LIMIT ? `文件较多，本次仅分析前 ${CLASSIFY_BATCH_LIMIT} 个` : null };
+  }
+
+  @Post('semantic-search')
+  @HttpCode(200)
+  async semanticSearch(
+    @Body(new StrictBodyPipe<SemanticSearchBody>(semanticSearchSchema)) body: SemanticSearchBody,
+    @Headers('authorization') authorization?: string,
+  ) {
+    const user = await requireUser(authorization);
+    if (!(await vectorStore.isAvailable())) {
+      return { items: [], notice: '当前部署未启用向量存储（PostgreSQL 需安装 pgvector 扩展）' };
+    }
+
+    const settings = await store.getAiSettings();
+    const embeddingConfig = resolveEmbeddingConfig(settings, await store.aiApiKey());
+    if (!embeddingConfig) {
+      return { items: [], notice: 'AI 服务未配置，请先用关键词与筛选条件' };
+    }
+
+    const stats = await vectorStore.vectorStats();
+    if (stats.chunks === 0) {
+      return { items: [], notice: '还没有语义索引：请先在「后台」对项目执行索引' };
+    }
+    if (stats.model && stats.model !== embeddingConfig.model) {
+      return {
+        items: [],
+        notice: `嵌入模型已从 ${stats.model} 变为 ${embeddingConfig.model}，请重新索引后再用语义搜索`,
+      };
+    }
+
+    const queryEmbedding = (await embedTexts(embeddingConfig, [body.query], 'query'))[0] ?? [];
+    const limit = Math.min(50, Math.max(1, Number(body.limit ?? 10) || 10));
+    const hits = await vectorStore.searchVectors(
+      user,
+      queryEmbedding,
+      embeddingConfig.model,
+      body.projectId ?? null,
+      limit,
+    );
+    if (hits.length === 0) {
+      return { items: [], notice: '语义检索没有找到相关内容' };
+    }
+    return { items: hits, notice: null };
+  }
+
+  @Post('reindex')
+  @HttpCode(200)
+  async reindex(
+    @Body(new StrictBodyPipe<ReindexBody>(reindexSchema)) body: ReindexBody,
+    @Headers('authorization') authorization?: string,
+  ) {
+    const user = await requireUser(authorization);
+    if (user.role !== 'LEADER') {
+      throw new DomainError('AUTH', 'VD-AUTH-404', '无权访问', { status: 404 });
+    }
+    if (!(await store.canAccessProject(user, body.projectId))) {
+      throw new DomainError('AUTH', 'VD-AUTH-404', '项目不存在', { status: 404 });
+    }
+    const settings = await store.getAiSettings();
+    const embeddingConfig = resolveEmbeddingConfig(settings, await store.aiApiKey());
+    if (!embeddingConfig) {
+      throw new DomainError('VAL', 'VD-AI-409', '请先在设置页配置 AI 服务（含嵌入模型）', { status: 409 });
+    }
+    if (!(await vectorStore.isAvailable())) {
+      throw new DomainError('SYS', 'VD-SYS-503', '当前部署未启用向量存储（PostgreSQL 需安装 pgvector 扩展）', {
+        status: 503,
+      });
+    }
+
+    const files = (await store.listFiles(body.projectId)).filter(
+      (f) => f.status === 'active' && summarizableKind(f.fileName, f.contentType) !== null,
+    );
+    if (files.length === 0) {
+      return { indexedFiles: 0, chunks: 0, skipped: 0, notice: '项目内没有可索引的文件（当前支持纯文本类与 docx/xlsx/pdf）' };
+    }
+
+    const records: ExtractedFileInput[] = [];
+    let skipped = 0;
+    for (const file of files) {
+      const kind = summarizableKind(file.fileName, file.contentType)!;
+      const size = await objectStorage.plaintextSize(file.objectPath).catch(() => 0);
+      if (kind !== 'text' && size > MAX_EXTRACT_SOURCE_BYTES) {
+        skipped += 1;
+        continue;
+      }
+      const content = (await this.extractFileText(file, kind, size)) ?? '';
+      if (!content.trim()) {
+        skipped += 1;
+        continue;
+      }
+      records.push({ fileId: file.fileId, fileName: file.fileName, content: content.slice(0, SUMMARY_INPUT_LIMIT) });
+    }
+
+    // 分块 → 嵌入 → 入库
+    const vectorRecords: Array<{
+      fileId: string;
+      fileName: string;
+      chunkIndex: number;
+      excerpt: string;
+      embedding: number[];
+    }> = [];
+    for (const file of records) {
+      const chunks = chunkText(file.content ?? '');
+      for (const chunk of chunks) {
+        vectorRecords.push({
+          fileId: file.fileId,
+          fileName: file.fileName,
+          chunkIndex: chunk.index,
+          excerpt: chunk.text.slice(0, 200),
+          embedding: [],
+        });
+      }
+    }
+    if (vectorRecords.length === 0) {
+      return { indexedFiles: 0, chunks: 0, skipped, notice: null };
+    }
+
+    // 嵌入按批调用，避免单请求过大；单批失败重试一次，仍失败则报 502
+    const EMBED_BATCH = 16;
+    let batchIndex = 0;
+    for (let start = 0; start < vectorRecords.length; start += EMBED_BATCH) {
+      batchIndex += 1;
+      const batch = vectorRecords.slice(start, start + EMBED_BATCH);
+      let embeddings: number[][];
+      try {
+        embeddings = await embedTexts(
+          embeddingConfig,
+          batch.map((r) => r.excerpt),
+          'store',
+        );
+      } catch (firstError) {
+        logger.warn('ai.reindex_embed_retry', {
+          batch: batchIndex,
+          message: firstError instanceof Error ? firstError.message : String(firstError),
+        });
+        try {
+          embeddings = await embedTexts(
+            embeddingConfig,
+            batch.map((r) => r.excerpt),
+            'store',
+          );
+        } catch (secondError) {
+          logger.error('ai.reindex_embed_failed', {
+            batch: batchIndex,
+            message: secondError instanceof Error ? secondError.message : String(secondError),
+          });
+          throw new DomainError('SYS', 'VD-SYS-502', `嵌入服务调用失败（第 ${batchIndex} 批），请稍后重试`, {
+            status: 502,
+          });
+        }
+      }
+      batch.forEach((record, index) => {
+        record.embedding = embeddings[index] ?? [];
+      });
+    }
+    const insertable = vectorRecords.filter((r) => r.embedding.length > 0);
+    if (insertable.length !== vectorRecords.length) {
+      logger.warn('ai.reindex_partial_embeddings', {
+        total: vectorRecords.length,
+        embedded: insertable.length,
+      });
+    }
+
+    const chunks = await vectorStore.replaceProjectVectors(
+      body.projectId,
+      embeddingConfig.model,
+      insertable.map((r) => ({
+        fileId: r.fileId,
+        fileName: r.fileName,
+        chunkIndex: r.chunkIndex,
+        excerpt: r.excerpt,
+        embedding: r.embedding,
+      })),
+    );
+
+    await store.recordAudit({
+      actor: user,
+      action: 'ai.reindex',
+      objectType: 'project',
+      objectId: body.projectId,
+      result: 'success',
+      detail: JSON.stringify({ files: records.length, chunks }),
+    });
+    return { indexedFiles: records.length, chunks, skipped, notice: null };
   }
 }

@@ -335,6 +335,21 @@ const TOOLS = [
       additionalProperties: false,
     },
   },
+  {
+    name: 'ai_semantic_search',
+    description:
+      '语义搜索：用自然语言描述要找的内容主题（不依赖文件名关键词），按语义相似度返回文件与摘录。需要项目已建立语义索引（领队在后台执行「重建索引」）。',
+    inputSchema: {
+      type: 'object',
+      required: ['query'],
+      properties: {
+        query: { type: 'string', maxLength: 300, description: '内容主题描述，如「磁盘告警的处置流程」' },
+        projectId: { type: 'string', description: '限定项目 id；省略则在全部可见项目内检索' },
+        limit: { type: 'integer', description: '最多返回条数，默认 10' },
+      },
+      additionalProperties: false,
+    },
+  },
 ];
 
 async function toolAiSummarizeFile(args) {
@@ -364,10 +379,31 @@ async function toolAiClassifyProject(args) {
   return `${notice}共 ${result.suggestions.length} 条分类建议：\n${lines.join('\n')}`;
 }
 
+async function toolAiSemanticSearch(args) {
+  const query = (args.query ?? '').trim();
+  if (!query) throw new Error('query 必填：描述要找的内容主题');
+  const params = new URLSearchParams();
+  if (args.projectId) params.set('projectId', args.projectId);
+  if (args.limit) params.set('limit', String(args.limit));
+  const result = await api('/ai/semantic-search', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ query: query.slice(0, 300) }),
+  });
+  const notice = result.notice ? `提示：${result.notice}\n` : '';
+  if (!result.items || result.items.length === 0) return `${notice}（语义检索没有找到相关内容）`;
+  const lines = result.items.map(
+    (item) =>
+      `${item.fileId}  ${item.fileName}（相似度 ${(item.score * 100).toFixed(0)}%）\n    摘录：${item.excerpt.slice(0, 120)}`,
+  );
+  return `${notice}共 ${result.items.length} 条语义命中：\n${lines.join('\n')}`;
+}
+
 const HANDLERS = {
   list_projects: toolListProjects,
   search_files: toolSearchFiles,
   ai_find_files: toolAiFindFiles,
+  ai_semantic_search: toolAiSemanticSearch,
   download_file: toolDownloadFile,
   upload_file: toolUploadFile,
   ai_summarize_file: toolAiSummarizeFile,

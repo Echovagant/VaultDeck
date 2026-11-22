@@ -119,6 +119,7 @@ export interface AiProfile {
   baseUrl: string | null;
   model: string | null;
   effort: string | null;
+  embeddingModel: string | null;
 }
 
 export function persistAiProfile(profile: AiProfile | null): boolean {
@@ -152,6 +153,7 @@ export function loadPersistedAiProfile(): AiProfile | null {
       baseUrl: typeof raw.baseUrl === 'string' ? raw.baseUrl : null,
       model: typeof raw.model === 'string' ? raw.model : null,
       effort: typeof raw.effort === 'string' ? raw.effort : null,
+      embeddingModel: typeof raw.embeddingModel === 'string' ? raw.embeddingModel : null,
     };
   } catch {
     return null;

@@ -28,8 +28,36 @@
         style="max-width: 560px"
         @search="parseWithAi"
       />
-      <span class="ai-bar-hint">解析出的条件仅在本机服务器内处理</span>
+      <a-button :loading="semanticLoading" @click="semanticSearch">语义搜索</a-button>
+      <span class="ai-bar-hint">语义搜索按内容主题匹配，需领队先建立索引</span>
     </div>
+
+    <a-modal
+      v-model:open="semanticVisible"
+      title="语义搜索结果"
+      :footer="null"
+      width="720px"
+      :destroy-on-close="true"
+    >
+      <a-spin :spinning="semanticLoading">
+        <a-alert
+          v-if="semanticNotice"
+          type="info"
+          show-icon
+          :message="semanticNotice"
+          style="margin-bottom: 12px"
+        />
+        <a-empty v-if="semanticItems.length === 0" description="没有语义命中的内容" />
+        <div v-for="item in semanticItems" :key="`${item.fileId}-${item.chunkIndex}`" class="semantic-item">
+          <div class="semantic-head">
+            <span class="semantic-name">{{ item.fileName }}</span>
+            <span class="semantic-score">相似度 {{ (item.score * 100).toFixed(0) }}%</span>
+          </div>
+          <p class="semantic-excerpt">{{ item.excerpt.slice(0, 160) }}</p>
+          <a-button type="link" size="small" @click="openSemanticPreview(item)">预览该文件</a-button>
+        </div>
+      </a-spin>
+    </a-modal>
 
     <div v-if="filters" class="filter-chips">
       <a-tag v-if="filters.keyword" closable @close="clearKeyword">{{ filters.keyword }}</a-tag>
@@ -129,6 +157,59 @@ const previewFile = ref<SearchItem | null>(null);
 const aiQuery = ref('');
 const aiParsing = ref(false);
 const filters = ref<ParsedFilters | null>(null);
+
+// ---------- 语义搜索 ----------
+
+interface SemanticItem {
+  fileId: string;
+  fileName: string;
+  chunkIndex: number;
+  excerpt: string;
+  score: number;
+}
+
+const semanticVisible = ref(false);
+const semanticLoading = ref(false);
+const semanticItems = ref<SemanticItem[]>([]);
+const semanticNotice = ref<string | null>(null);
+
+async function semanticSearch(): Promise<void> {
+  const query = aiQuery.value.trim();
+  if (!query) {
+    message.warning('先在输入框里描述要找的内容主题');
+    return;
+  }
+  semanticVisible.value = true;
+  semanticLoading.value = true;
+  semanticItems.value = [];
+  semanticNotice.value = null;
+  try {
+    const result = await api<{ items: SemanticItem[]; notice: string | null }>('/ai/semantic-search', {
+      method: 'POST',
+      body: JSON.stringify({ query: query.slice(0, 300), limit: 10 }),
+    });
+    semanticItems.value = result.items ?? [];
+    semanticNotice.value = result.notice;
+  } catch (error) {
+    semanticVisible.value = false;
+    message.error(error instanceof ApiError ? error.message : '语义搜索失败');
+  } finally {
+    semanticLoading.value = false;
+  }
+}
+
+function openSemanticPreview(item: SemanticItem): void {
+  previewFile.value = {
+    fileId: item.fileId,
+    fileName: item.fileName,
+    sizeBytes: 0,
+    projectId: '',
+    projectName: '',
+    createdAt: '',
+    hasContent: true,
+  };
+  previewVisible.value = true;
+}
 
 const columns = [
   { title: '文件名', dataIndex: 'fileName', key: 'fileName' },
@@ -290,6 +371,39 @@ onMounted(() => {
   align-items: center;
   gap: 12px;
   margin-top: 10px;
+}
+
+.semantic-item {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--vd-border, #e5e0d5);
+}
+
+.semantic-item:last-child {
+  border-bottom: none;
+}
+
+.semantic-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.semantic-name {
+  font-weight: 600;
+}
+
+.semantic-score {
+  color: var(--vd-accent, #b4482c);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.semantic-excerpt {
+  margin: 6px 0 4px;
+  color: var(--vd-text-secondary, #6b6252);
+  font-size: 12px;
+  line-height: 1.8;
 }
 
 .ai-bar-hint {

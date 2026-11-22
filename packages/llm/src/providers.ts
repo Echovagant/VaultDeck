@@ -100,6 +100,21 @@ export interface LlmProviderEntry {
    * **不要**拿别家的模型名凑数。
    */
   readonly fallbackModels?: readonly string[];
+  /**
+   * 该接入线提供的文本嵌入（embeddings）模型名，来自各厂商官方文档（2026-11 核实）：
+   * MiniMax embo-01（官方 Apifox 文档）、智谱 embedding-3（官方文档）、
+   * 硅基流动 BAAI/bge-m3（模型页）、Ollama nomic-embed-text（官方模型库）。
+   * 没有核实的家不写 —— 与端点同一条纪律。
+   */
+  readonly embeddingsModels?: readonly string[];
+  /**
+   * 嵌入请求的厂商特有附加体：MiniMax 要求 type 参数区分
+   * 存储向量（{"type":"db"}）与查询向量（{"type":"query"}），其余家不需要。
+   */
+  readonly embeddingStoreBody?: Readonly<Record<string, unknown>>;
+  readonly embeddingQueryBody?: Readonly<Record<string, unknown>>;
+  /** 嵌入接口线协议：openai（input/data）或 minimax（texts/vectors + type 参数） */
+  readonly embeddingsWire?: 'openai' | 'minimax';
 }
 
 /**
@@ -119,6 +134,10 @@ export const LLM_PROVIDERS: readonly LlmProviderEntry[] = [
     effortSupported: true,
     effortLevels: MINIMAX_EFFORT_LEVELS,
     fallbackModels: MINIMAX_MODELS,
+    embeddingsModels: ['embo-01'],
+    embeddingsWire: 'minimax',
+    embeddingStoreBody: { type: 'db' },
+    embeddingQueryBody: { type: 'query' },
     note: '与 MiniMax 国际版是两套账号体系，key 不通用。计费两把 key：M Plan（订阅积分池，minimax.cn/m-plan）与按量 API（积分制）——粘哪把就按哪把扣费，M Plan 可在平台设置里开「额度用完自动扣积分」。M2.7/M2.5/M2.1/M2 将于 2026-11-18 退役。',
   },
   {
@@ -130,6 +149,10 @@ export const LLM_PROVIDERS: readonly LlmProviderEntry[] = [
     keyPrefixes: ['sk-cp-', 'sk-api-'],
     effortSupported: true,
     fallbackModels: MINIMAX_MODELS,
+    embeddingsModels: ['embo-01'],
+    embeddingsWire: 'minimax',
+    embeddingStoreBody: { type: 'db' },
+    embeddingQueryBody: { type: 'query' },
     note: '与国内版是两套账号体系，key 不通用。M2.7/M2.5/M2.1/M2 将于 2026-11-18 退役（自动路由到 M3.1 Flash）。计费请看 minimax.io 官方定价页。',
   },
   {
@@ -140,6 +163,7 @@ export const LLM_PROVIDERS: readonly LlmProviderEntry[] = [
     family: 'glm',
     keyPrefixes: [],
     fallbackModels: ['glm-5.3', 'glm-5.3-flash', 'glm-5.3-flashx', 'glm-5.2', 'glm-5.1'],
+    embeddingsModels: ['embedding-3'],
     note: '计费两把 key：GLM Coding Plan（订阅积分池，限编程工具）与标准 API Key（按量计费，通用无限制）——粘哪把就按哪把扣费。思考开关是布尔型（enable_thinking），不是档位；现役为 5.3 系。',
   },
   {
@@ -190,6 +214,8 @@ export const LLM_PROVIDERS: readonly LlmProviderEntry[] = [
     modelsSupported: true,
     family: 'siliconflow',
     keyPrefixes: [],
+    embeddingsModels: ['BAAI/bge-m3'],
+    note: 'BAAI/bge-m3 嵌入模型免费（1024 维，8192 token 上下文）。',
   },
   {
     id: 'ollama',
@@ -198,7 +224,8 @@ export const LLM_PROVIDERS: readonly LlmProviderEntry[] = [
     modelsSupported: true,
     family: 'local',
     keyPrefixes: [],
-    note: '本机服务，不用密钥；要先把 Ollama 或 vLLM 起起来。',
+    embeddingsModels: ['nomic-embed-text'],
+    note: '本机服务，不用密钥；要先把 Ollama 或 vLLM 起起来。嵌入模型需先 ollama pull。',
   },
   {
     id: 'custom',

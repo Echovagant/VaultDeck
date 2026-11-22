@@ -100,6 +100,7 @@ export interface AiSettingsView {
   baseUrl: string | null;
   model: string | null;
   effort: string | null;
+  embeddingModel: string | null;
   hasApiKey: boolean;
 }
 
@@ -161,6 +162,7 @@ export interface AiSettingsPatchInput {
   baseUrl?: string | null;
   model?: string | null;
   effort?: string | null;
+  embeddingModel?: string | null;
   /** undefined=不动；null=清除；字符串=写入（内存明文，落库前由实现加密） */
   apiKey?: string | null;
 }

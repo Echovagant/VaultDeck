@@ -740,6 +740,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ai/semantic-search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["semanticSearch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/reindex": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["reindexProject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/agent/grants": {
         parameters: {
             query?: never;
@@ -1210,6 +1242,7 @@ export interface components {
             baseUrl?: string | null;
             model?: string | null;
             effort?: string | null;
+            embeddingModel?: string | null;
             hasApiKey?: boolean;
         };
         AiProviderEntry: {
@@ -1234,6 +1267,7 @@ export interface components {
             baseUrl?: string | null;
             model?: string | null;
             effort?: string | null;
+            embeddingModel?: string | null;
             apiKey?: string;
             clearApiKey?: boolean;
         };
@@ -1353,6 +1387,40 @@ export interface components {
         AiClassifyResult: {
             suggestions: components["schemas"]["AiClassifySuggestion"][];
             /** @description AI 未配置或解析失败时的降级提示 */
+            notice?: string | null;
+        };
+        AiSemanticSearchRequest: {
+            query: string;
+            /**
+             * Format: uuid
+             * @description 限定项目；省略则在全部可见项目内检索
+             */
+            projectId?: string | null;
+            limit?: number;
+        };
+        AiSemanticHit: {
+            /** Format: uuid */
+            fileId: string;
+            fileName: string;
+            chunkIndex: number;
+            excerpt: string;
+            /** @description 余弦相似度 0~1 */
+            score: number;
+        };
+        AiSemanticResult: {
+            items: components["schemas"]["AiSemanticHit"][];
+            /** @description 未索引 / 模型变更 / 服务不可用时的降级提示 */
+            notice?: string | null;
+        };
+        AiReindexRequest: {
+            /** Format: uuid */
+            projectId: string;
+        };
+        AiReindexResult: {
+            indexedFiles: number;
+            chunks: number;
+            /** @description 无可提取文本而跳过的文件数 */
+            skipped?: number;
             notice?: string | null;
         };
     };
@@ -2971,6 +3039,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AiClassifyResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    semanticSearch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AiSemanticSearchRequest"];
+            };
+        };
+        responses: {
+            /** @description 语义检索结果（未索引或模型变更时带 notice 降级） */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiSemanticResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    reindexProject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AiReindexRequest"];
+            };
+        };
+        responses: {
+            /** @description 项目语义索引重建结果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiReindexResult"];
                 };
             };
             400: components["responses"]["BadRequest"];

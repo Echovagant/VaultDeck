@@ -390,6 +390,7 @@ export class PgStore implements StorePort {
       baseUrl: (values.get('ai.baseUrl') as string | null) ?? null,
       model: (values.get('ai.model') as string | null) ?? null,
       effort: (values.get('ai.effort') as string | null) ?? null,
+      embeddingModel: (values.get('ai.embeddingModel') as string | null) ?? null,
       hasApiKey: apiKey !== null,
     };
   }
@@ -400,6 +401,7 @@ export class PgStore implements StorePort {
     if (patch.baseUrl !== undefined) entries.push(['ai.baseUrl', patch.baseUrl]);
     if (patch.model !== undefined) entries.push(['ai.model', patch.model]);
     if (patch.effort !== undefined) entries.push(['ai.effort', patch.effort]);
+    if (patch.embeddingModel !== undefined) entries.push(['ai.embeddingModel', patch.embeddingModel]);
     if (patch.apiKey !== undefined) {
       // 密钥落库前一律 sealText（v1: 前缀），清除时存 JSON null
       entries.push(['ai.apiKey', patch.apiKey === null ? null : sealText(patch.apiKey)]);

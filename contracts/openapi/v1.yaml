@@ -1005,6 +1005,39 @@ paths:
               schema: { $ref: '#/components/schemas/AiClassifyResult' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '404': { $ref: '#/components/responses/NotFound' }
+  /ai/semantic-search:
+    post:
+      tags: [ai]
+      operationId: semanticSearch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AiSemanticSearchRequest' }
+      responses:
+        '200':
+          description: 语义检索结果（未索引或模型变更时带 notice 降级）
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AiSemanticResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /ai/reindex:
+    post:
+      tags: [ai]
+      operationId: reindexProject
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AiReindexRequest' }
+      responses:
+        '200':
+          description: 项目语义索引重建结果
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AiReindexResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /agent/grants:
     post:
       tags: [agent]
@@ -1686,6 +1719,7 @@ components:
         baseUrl: { type: [string, 'null'] }
         model: { type: [string, 'null'] }
         effort: { type: [string, 'null'] }
+        embeddingModel: { type: [string, 'null'] }
         hasApiKey: { type: boolean }
     AiProviderEntry:
       type: object
@@ -1718,6 +1752,7 @@ components:
         baseUrl: { type: [string, 'null'] }
         model: { type: [string, 'null'] }
         effort: { type: [string, 'null'] }
+        embeddingModel: { type: [string, 'null'] }
         apiKey: { type: string, maxLength: 300, writeOnly: true }
         clearApiKey: { type: boolean }
     AiModelsResult:
@@ -1848,3 +1883,42 @@ components:
           type: array
           items: { $ref: '#/components/schemas/AiClassifySuggestion' }
         notice: { type: [string, 'null'], description: AI 未配置或解析失败时的降级提示 }
+    AiSemanticSearchRequest:
+      type: object
+      additionalProperties: false
+      required: [query]
+      properties:
+        query: { type: string, minLength: 1, maxLength: 300 }
+        projectId: { type: [string, 'null'], format: uuid, description: 限定项目；省略则在全部可见项目内检索 }
+        limit: { type: integer, minimum: 1, maximum: 50 }
+    AiSemanticHit:
+      type: object
+      required: [fileId, fileName, chunkIndex, excerpt, score]
+      properties:
+        fileId: { type: string, format: uuid }
+        fileName: { type: string }
+        chunkIndex: { type: integer, minimum: 0 }
+        excerpt: { type: string }
+        score: { type: number, description: 余弦相似度 0~1 }
+    AiSemanticResult:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/AiSemanticHit' }
+        notice: { type: [string, 'null'], description: 未索引 / 模型变更 / 服务不可用时的降级提示 }
+    AiReindexRequest:
+      type: object
+      additionalProperties: false
+      required: [projectId]
+      properties:
+        projectId: { type: string, format: uuid }
+    AiReindexResult:
+      type: object
+      required: [indexedFiles, chunks]
+      properties:
+        indexedFiles: { type: integer, minimum: 0 }
+        chunks: { type: integer, minimum: 0 }
+        skipped: { type: integer, minimum: 0, description: 无可提取文本而跳过的文件数 }
+        notice: { type: [string, 'null'] }
