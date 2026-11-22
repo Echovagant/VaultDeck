@@ -12,6 +12,7 @@ import { HealthController } from './interfaces/http/health.controller';
 import { ProjectsController } from './interfaces/http/controllers/projects.controller';
 import { SearchController } from './interfaces/http/controllers/search.controller';
 import { StatsController } from './interfaces/http/controllers/stats.controller';
+import { ShareController } from './interfaces/http/controllers/share.controller';
 import { TrashController } from './interfaces/http/controllers/trash.controller';
 import { UploadController } from './interfaces/http/controllers/upload.controller';
 import { UsersController } from './interfaces/http/controllers/users.controller';
@@ -36,6 +37,7 @@ import { SystemIntegrityController } from './interfaces/http/controllers/system-
     CategoriesController,
     SystemSettingsController,
     SystemIntegrityController,
+    ShareController,
     AgentController,
   ],
 })

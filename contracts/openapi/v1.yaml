@@ -26,6 +26,7 @@ tags:
   - name: system
   - name: ai
   - name: agent
+  - name: shares
 paths:
   /auth/login:
     post:
@@ -1038,6 +1039,63 @@ paths:
               schema: { $ref: '#/components/schemas/AiReindexResult' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '404': { $ref: '#/components/responses/NotFound' }
+  /shares:
+    post:
+      tags: [shares]
+      operationId: createShare
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ShareCreate' }
+      responses:
+        '200':
+          description: 已创建，分享令牌明文只在此响应出现一次
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ShareCreated' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    get:
+      tags: [shares]
+      operationId: listShares
+      responses:
+        '200':
+          description: 当前用户创建的分享清单（领队可见全部）
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ShareView' }
+  /shares/{shareId}:
+    delete:
+      tags: [shares]
+      operationId: revokeShare
+      parameters:
+        - { name: shareId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: 已撤销，链接立即失效
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ShareView' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /share/{token}:
+    get:
+      tags: [shares]
+      operationId: downloadSharedFile
+      security: []
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string, minLength: 20, maxLength: 120 } }
+      responses:
+        '200':
+          description: 文件内容（限局域网来源访问）
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        '403': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '410': { $ref: '#/components/responses/Gone' }
   /agent/grants:
     post:
       tags: [agent]
@@ -1922,3 +1980,32 @@ components:
         chunks: { type: integer, minimum: 0 }
         skipped: { type: integer, minimum: 0, description: 无可提取文本而跳过的文件数 }
         notice: { type: [string, 'null'] }
+    ShareCreate:
+      type: object
+      additionalProperties: false
+      required: [fileId, expiresHours]
+      properties:
+        fileId: { type: string, format: uuid }
+        expiresHours: { type: integer, minimum: 1, maximum: 168, description: 有效期（小时），1~168 }
+    ShareView:
+      type: object
+      required: [shareId, fileId, fileName, createdBy, createdAt, expiresAt, revoked, downloadCount]
+      properties:
+        shareId: { type: string, format: uuid }
+        fileId: { type: string, format: uuid }
+        fileName: { type: string }
+        createdBy: { type: string, format: uuid }
+        creatorName: { type: string }
+        createdAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+        revoked: { type: boolean }
+        downloadCount: { type: integer, minimum: 0 }
+    ShareCreated:
+      type: object
+      required: [shareId, fileName, token, url, expiresAt]
+      properties:
+        shareId: { type: string, format: uuid }
+        fileName: { type: string }
+        token: { type: string, description: 分享令牌明文，只出现这一次 }
+        url: { type: string, description: 完整分享下载地址（含 /api/v1 前缀） }
+        expiresAt: { type: string, format: date-time }

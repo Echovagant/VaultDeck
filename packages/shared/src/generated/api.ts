@@ -772,6 +772,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/shares": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listShares"];
+        put?: never;
+        post: operations["createShare"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/shares/{shareId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["revokeShare"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/share/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["downloadSharedFile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/agent/grants": {
         parameters: {
             query?: never;
@@ -1422,6 +1470,39 @@ export interface components {
             /** @description 无可提取文本而跳过的文件数 */
             skipped?: number;
             notice?: string | null;
+        };
+        ShareCreate: {
+            /** Format: uuid */
+            fileId: string;
+            /** @description 有效期（小时），1~168 */
+            expiresHours: number;
+        };
+        ShareView: {
+            /** Format: uuid */
+            shareId: string;
+            /** Format: uuid */
+            fileId: string;
+            fileName: string;
+            /** Format: uuid */
+            createdBy: string;
+            creatorName?: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            expiresAt: string;
+            revoked: boolean;
+            downloadCount: number;
+        };
+        ShareCreated: {
+            /** Format: uuid */
+            shareId: string;
+            fileName: string;
+            /** @description 分享令牌明文，只出现这一次 */
+            token: string;
+            /** @description 完整分享下载地址（含 /api/v1 前缀） */
+            url: string;
+            /** Format: date-time */
+            expiresAt: string;
         };
     };
     responses: {
@@ -3094,6 +3175,100 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    listShares: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 当前用户创建的分享清单（领队可见全部） */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShareView"][];
+                };
+            };
+        };
+    };
+    createShare: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShareCreate"];
+            };
+        };
+        responses: {
+            /** @description 已创建，分享令牌明文只在此响应出现一次 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShareCreated"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    revokeShare: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shareId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已撤销，链接立即失效 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShareView"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    downloadSharedFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 文件内容（限局域网来源访问） */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            403: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+            410: components["responses"]["Gone"];
         };
     };
     listAgentGrants: {
