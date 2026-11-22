@@ -71,6 +71,16 @@ export class MemoryVectorStore {
     return hits.slice(0, limit).filter((hit) => hit.score > 0.05);
   }
 
+  async installVector(): Promise<{ ok: boolean; detail: string }> {
+    return { ok: true, detail: '内存实现无需安装，语义搜索始终可用' };
+  }
+
+  async uninstallVector(): Promise<{ ok: boolean; detail: string }> {
+    this.vectors.length = 0;
+    this.model = null;
+    return { ok: true, detail: '内存向量已清空' };
+  }
+
   async clearProjectVectors(projectId: string): Promise<void> {
     for (let i = this.vectors.length - 1; i >= 0; i -= 1) {
       if (this.vectors[i]!.projectId === projectId) this.vectors.splice(i, 1);

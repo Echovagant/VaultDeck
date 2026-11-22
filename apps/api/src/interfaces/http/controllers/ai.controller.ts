@@ -475,6 +475,46 @@ export class AiController {
     return { items: hits, notice: null };
   }
 
+  /** 插件市场：安装 pgvector 扩展（仅领队；dll 缺失时返回管理员步骤） */
+  @Post('vector/install')
+  @HttpCode(200)
+  async installVector(@Headers('authorization') authorization?: string) {
+    const user = await requireUser(authorization);
+    if (user.role !== 'LEADER') {
+      throw new DomainError('AUTH', 'VD-AUTH-404', '无权访问', { status: 404 });
+    }
+    const result = await vectorStore.installVector();
+    await store.recordAudit({
+      actor: user,
+      action: 'ai.vector_install',
+      objectType: 'system',
+      objectId: 'pgvector',
+      result: result.ok ? ('success' as const) : ('failed' as const),
+      detail: result.detail,
+    });
+    return { ...result, available: result.ok ? await vectorStore.isAvailable() : false };
+  }
+
+  /** 插件市场：卸载 pgvector 扩展（清空向量数据，需二次确认） */
+  @Post('vector/uninstall')
+  @HttpCode(200)
+  async uninstallVector(@Headers('authorization') authorization?: string) {
+    const user = await requireUser(authorization);
+    if (user.role !== 'LEADER') {
+      throw new DomainError('AUTH', 'VD-AUTH-404', '无权访问', { status: 404 });
+    }
+    const result = await vectorStore.uninstallVector();
+    await store.recordAudit({
+      actor: user,
+      action: 'ai.vector_uninstall',
+      objectType: 'system',
+      objectId: 'pgvector',
+      result: result.ok ? ('success' as const) : ('failed' as const),
+      detail: result.detail,
+    });
+    return { ...result, available: result.ok ? await vectorStore.isAvailable() : false };
+  }
+
   @Post('reindex')
   @HttpCode(200)
   async reindex(

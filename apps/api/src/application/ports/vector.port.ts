@@ -46,6 +46,10 @@ export interface VectorStorePort {
   ): Promise<AiSemanticHit[]>;
   /** 清除一个项目的向量（项目删除级联时调用） */
   clearProjectVectors(projectId: string): Promise<void>;
+  /** 安装 pgvector 扩展（PG 实现）；内存实现恒返回已启用 */
+  installVector(): Promise<{ ok: boolean; detail: string }>;
+  /** 卸载 pgvector 扩展并清空向量数据 */
+  uninstallVector(): Promise<{ ok: boolean; detail: string }>;
   vectorStats(): Promise<VectorStats>;
 }
 

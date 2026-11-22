@@ -115,20 +115,106 @@
       </div>
       <div class="ext-grid">
         <a-empty v-if="visibleExtensions.length === 0" description="没有匹配的扩展" />
-        <div v-for="ext in visibleExtensions" :key="ext.name" class="ext-card">
+        <div
+          v-for="ext in visibleExtensions"
+          :key="ext.name"
+          class="ext-card ext-card-clickable"
+          @click="openExtensionDetail(ext)"
+        >
           <div class="ext-head">
             <span class="ext-name">{{ ext.name }}</span>
             <a-tag :color="ext.tagColor">{{ ext.tagText }}</a-tag>
           </div>
           <p class="ext-desc">{{ ext.desc }}</p>
-          <p v-if="ext.steps" class="ext-steps">{{ ext.steps }}</p>
           <p v-if="ext.meta" class="ext-meta">{{ ext.meta }}</p>
-          <a-button v-if="ext.guideUrl" type="link" size="small" :href="ext.guideUrl" target="_blank" rel="noopener">
-            查看安装指南
-          </a-button>
+          <span class="ext-open-hint">点击查看详情与操作</span>
         </div>
       </div>
     </div>
+
+    <a-modal
+      v-model:open="extDetailVisible"
+      :title="activeExtension?.name ?? '扩展详情'"
+      :footer="null"
+      :destroy-on-close="true"
+    >
+      <template v-if="activeExtension">
+        <p class="ext-desc">{{ activeExtension.desc }}</p>
+        <a-tag :color="activeExtension.tagColor">{{ activeExtension.tagText }}</a-tag>
+        <p v-if="activeExtension.meta" class="ext-meta">{{ activeExtension.meta }}</p>
+
+        <template v-if="activeExtension.name.startsWith('pgvector')">
+          <a-alert
+            v-if="extActionDetail"
+            :type="extActionOk ? 'success' : 'error'"
+            show-icon
+            :message="extActionDetail"
+            style="margin: 12px 0"
+          />
+          <div class="ext-actions">
+            <a-button
+              v-if="!aiBundle?.vectorAvailable"
+              type="primary"
+              :loading="extActionLoading"
+              @click="runVectorAction('install')"
+            >
+              安装
+            </a-button>
+            <template v-else>
+              <a-button :loading="extActionLoading" @click="runVectorAction('refresh')">
+                更新状态
+              </a-button>
+              <a-button danger :loading="extActionLoading" @click="runVectorAction('uninstall')">
+                卸载（清空语义索引）
+              </a-button>
+            </template>
+          </div>
+          <p v-if="!aiBundle?.vectorAvailable" class="ext-steps">
+            若安装提示找不到扩展文件，需要管理员先把 vector.dll 复制到 PG 的 lib 目录、vector.control
+            复制到 share\extension 目录并重启数据库，再点「安装」（完整步骤见部署手册 5.3）。
+          </p>
+        </template>
+
+        <template v-else-if="activeExtension.name.startsWith('MCP')">
+          <div class="ext-actions">
+            <a-button type="primary" @click="mcpConfigVisible = true">查看接入配置</a-button>
+          </div>
+        </template>
+
+        <template v-else-if="activeExtension.name.startsWith('Agent Skill')">
+          <div class="ext-actions">
+            <a-button
+              type="primary"
+              href="https://github.com/Echovagant/VaultDeck/releases"
+              target="_blank"
+              rel="noopener"
+            >
+              前往 Releases 下载
+            </a-button>
+          </div>
+        </template>
+      </template>
+    </a-modal>
+
+    <a-modal v-model:open="mcpConfigVisible" title="MCP Server 接入配置" :footer="null" width="680px">
+      <p class="ext-desc">
+        在 MCP 客户端（Claude Desktop / Cherry Studio / Cursor 等）的配置文件中加入以下片段；令牌在
+        「Agent 接入」创建授权码后由 Agent 兑换获得。
+      </p>
+      <pre class="mcp-config">{
+  "mcpServers": {
+    "vaultdeck": {
+      "command": "node",
+      "args": ["&lt;离线包路径&gt;/current/mcp/vaultdeck-mcp.mjs"],
+      "env": {
+        "VD_VAULTDECK_URL": "https://&lt;主机地址&gt;:8443",
+        "VD_VAULTDECK_TOKEN": "&lt;vdak_ 开头的访问令牌&gt;"
+      }
+    }
+  }
+}</pre>
+      <p class="ext-desc">完整说明见离线包 current\mcp\MCP-INSTALL.md。</p>
+    </a-modal>
 
     <a-modal
       v-model:open="dialogVisible"
@@ -343,7 +429,6 @@ const EXT_CATALOG: Array<Omit<ExtEntry, 'steps' | 'meta'>> = [
     tagText: '已启用',
     tagColor: 'success',
     desc: '语义搜索与语义索引的向量存储。未安装时语义功能禁用并提示，其余 AI 功能不受影响。',
-    guideUrl: 'https://github.com/Echovagant/VaultDeck/blob/main/docs/ops/deployment.md',
   },
   {
     name: 'MCP Server',
@@ -360,13 +445,6 @@ const EXT_CATALOG: Array<Omit<ExtEntry, 'steps' | 'meta'>> = [
     tagColor: 'success',
     desc: '面向千问等支持 Skill 的 AI 助手：下载 vaultdeck-skill-x.x.x.zip，按包内 SKILL.md 安装授权即可用自然语言找文件、总结、分类、上传下载。',
     guideUrl: 'https://github.com/Echovagant/VaultDeck/releases',
-  },
-  {
-    name: 'LibreOffice（pptx 服务端转换）',
-    category: '文档转换',
-    tagText: '未随包提供',
-    tagColor: 'default',
-    desc: '可选组件：安装后 pptx 可服务端转 PDF 预览。为控制离线包体积默认不含；docx / xlsx / pdf 预览不依赖它。',
   },
 ];
 
@@ -395,6 +473,43 @@ const visibleExtensions = computed<ExtEntry[]>(() => {
 });
 
 const extFilterOptions = ['全部', 'AI 能力', '接入', '文档转换'];
+const extDetailVisible = ref(false);
+const activeExtension = ref<ExtEntry | null>(null);
+const extActionLoading = ref(false);
+const extActionDetail = ref('');
+const extActionOk = ref(false);
+const mcpConfigVisible = ref(false);
+
+function openExtensionDetail(ext: ExtEntry): void {
+  activeExtension.value = ext;
+  extActionDetail.value = '';
+  extDetailVisible.value = true;
+  void loadAiBundle();
+}
+
+async function runVectorAction(action: 'install' | 'uninstall' | 'refresh'): Promise<void> {
+  extActionLoading.value = true;
+  extActionDetail.value = '';
+  try {
+    if (action === 'refresh') {
+      await loadAiBundle();
+      extActionOk.value = true;
+      extActionDetail.value = '状态已刷新';
+      return;
+    }
+    const endpoint = action === 'install' ? '/ai/vector/install' : '/ai/vector/uninstall';
+    const result = await api<{ ok: boolean; detail: string }>(endpoint, { method: 'POST' });
+    extActionOk.value = result.ok;
+    extActionDetail.value = result.detail;
+    await loadAiBundle();
+  } catch (error) {
+    extActionOk.value = false;
+    extActionDetail.value = error instanceof ApiError ? error.message : '操作失败';
+  } finally {
+    extActionLoading.value = false;
+  }
+}
+
 const grantSaving = ref(false);
 const grantDialogVisible = ref(false);
 const codeVisible = ref(false);

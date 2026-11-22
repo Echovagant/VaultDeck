@@ -40,6 +40,14 @@ export const vectorStore: VectorStorePort = {
     return active.vectorStats();
   },
 
+  async installVector() {
+    return active.installVector();
+  },
+
+  async uninstallVector() {
+    return active.uninstallVector();
+  },
+
   async searchVectors(user, queryEmbedding, embeddingModel, projectId, limit) {
     const visible = await store.visibleProjectIds(user);
     // 领队可见全部；projectId 限定时直接交给底层

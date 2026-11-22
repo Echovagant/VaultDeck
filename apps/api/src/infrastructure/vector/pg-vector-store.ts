@@ -32,6 +32,45 @@ export class PgVectorStore {
     return this.available;
   }
 
+  /** 安装：执行 CREATE EXTENSION；dll 缺失时返回明确错误，供界面给出管理员步骤 */
+  async installVector(): Promise<{ ok: boolean; detail: string }> {
+    try {
+      await this.pool.query('CREATE EXTENSION IF NOT EXISTS vector');
+      this.available = true;
+      this.schemaReady = false; // 触发建表
+      await this.ensureSchema();
+      return { ok: true, detail: 'pgvector 扩展已安装并启用' };
+    } catch (error) {
+      this.available = false;
+      const message = error instanceof Error ? error.message : String(error);
+      // PG 在 dll 缺失时报 could not load library
+      if (message.includes('could not load library') || message.includes('vector')) {
+        return {
+          ok: false,
+          detail:
+            '安装失败：PostgreSQL 找不到 vector 扩展文件。需要管理员先把 vector.dll 复制到 PG 的 lib 目录、vector.control 复制到 shareextension 目录，然后重启数据库再点「安装」（完整步骤见部署手册 5.3）。',
+        };
+      }
+      return { ok: false, detail: `安装失败：${message.slice(0, 160)}` };
+    }
+  }
+
+  /** 卸载：清空向量数据并移除扩展（向量数据一并清除，界面需二次确认） */
+  async uninstallVector(): Promise<{ ok: boolean; detail: string }> {
+    try {
+      await this.ensureSchema();
+      await this.pool.query('DROP TABLE IF EXISTS vector_chunk');
+      await this.pool.query('DROP EXTENSION IF EXISTS vector');
+      this.available = false;
+      this.schemaReady = false;
+      return { ok: true, detail: 'pgvector 已卸载，向量数据已清除' };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      // 有依赖对象时 DROP EXTENSION RESTRICT 会拒绝：提示先卸载
+      return { ok: false, detail: `卸载失败：${message.slice(0, 160)}` };
+    }
+  }
+
   private async ensureSchema(): Promise<boolean> {
     if (!(await this.isAvailable())) return false;
     if (this.schemaReady) return true;

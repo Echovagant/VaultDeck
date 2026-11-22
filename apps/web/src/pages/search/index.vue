@@ -145,6 +145,14 @@
           >
             预览
           </a-button>
+          <a-button
+            v-if="canShare"
+            type="link"
+            :disabled="record.hasContent === false"
+            @click="openShareCreateFromSearch(record)"
+          >
+            分享
+          </a-button>
           <a-button type="link" :disabled="record.hasContent === false" @click="download(record)">
             下载
           </a-button>
@@ -227,7 +235,7 @@ const semanticNotice = ref<string | null>(null);
 const canShare = computed(() => session.user?.role === 'LEADER' || session.user?.role === 'DEPUTY_LEADER');
 const shareCreateVisible = ref(false);
 const shareCreating = ref(false);
-const shareTarget = ref<SemanticItem | null>(null);
+const shareTarget = ref<SemanticItem | SearchItem | null>(null);
 const shareForm = reactive<{ fileId: string; expiresHours: number }>({ fileId: '', expiresHours: 24 });
 const shareResultVisible = ref(false);
 const shareResultUrl = ref('');
@@ -238,6 +246,10 @@ function openShareCreate(item: SemanticItem): void {
   shareForm.fileId = item.fileId;
   shareForm.expiresHours = 24;
   shareCreateVisible.value = true;
+}
+
+function openShareCreateFromSearch(record: SearchItem): void {
+  openShareCreate({ fileId: record.fileId, fileName: record.fileName, chunkIndex: 0, excerpt: '', score: 0 });
 }
 
 async function submitShareCreate(): Promise<void> {
