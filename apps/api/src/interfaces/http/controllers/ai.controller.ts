@@ -141,6 +141,7 @@ export class AiController {
       settings: await store.getAiSettings(),
       providers: aiProvidersCatalog(),
       encryptionEnabled: encryptionEnabled(),
+      vectorAvailable: await vectorStore.isAvailable(),
     };
   }
 

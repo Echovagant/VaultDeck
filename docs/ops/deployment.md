@@ -148,6 +148,19 @@ AI 功能（找文件、总结、分类建议）使用 BYOK：模型密钥由使
 
 离线包 `current\mcp\` 目录内置 MCP Server（零依赖单文件）与安装说明 `MCP-INSTALL.md`；Skill 包从 Releases 页下载，安装步骤见包内 `SKILL.md`。
 
+### 5.3 语义搜索（可选，需 pgvector）
+
+语义搜索的向量存储依赖 PostgreSQL 的 **pgvector** 扩展（开源项目，GitHub `pgvector/pgvector`，Windows 预编译 dll 需按 PG 大版本从其 Release 页下载）。未安装时语义搜索与语义索引整体禁用并在界面明确提示，其余 AI 功能不受影响。
+
+安装步骤（管理员 PowerShell，PG 服务为本机 `F:\PostgreSQL` 时示例）：
+
+1. 从 pgvector GitHub Release 下载与 PG 大版本匹配的 Windows 包，解压后把其中的 `vector.dll`、`vector.control` 复制到 PG 的 `lib` 与 `share\extension` 目录（如 `F:\PostgreSQL\pgsql\lib`、`F:\PostgreSQL\pgsql\share\extension`）。
+2. 重启数据库服务：`pg_ctl -D <数据目录> restart`。
+3. 在业务库执行：`CREATE EXTENSION IF NOT EXISTS vector;`
+4. 重启 vaultdeck-api 服务（或后台重新保存一次 AI 设置）。「设置 → AI 服务」页会显示语义搜索是否可用。
+
+嵌入模型可在设置页指定（如 MiniMax `embo-01`、智谱 `embedding-3`、硅基流动 `BAAI/bge-m3`、Ollama `nomic-embed-text`）；更换嵌入模型后需由领队在后台重新执行索引。
+
 ## 6 启动与回滚
 
 - 启动：`net start vaultdeck-api`、`net start vaultdeck-web`（或 WinSW `start`）。

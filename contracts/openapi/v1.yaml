@@ -1795,13 +1795,14 @@ components:
         fallbackModels: { type: array, items: { type: string } }
     AiSettingsBundle:
       type: object
-      required: [settings, providers, encryptionEnabled]
+      required: [settings, providers, encryptionEnabled, vectorAvailable]
       properties:
         settings: { $ref: '#/components/schemas/AiSettingsView' }
         providers:
           type: array
           items: { $ref: '#/components/schemas/AiProviderEntry' }
         encryptionEnabled: { type: boolean }
+        vectorAvailable: { type: boolean, description: 语义搜索存储是否可用（PG 需 pgvector 扩展） }
     AiSettingsPatch:
       type: object
       additionalProperties: false

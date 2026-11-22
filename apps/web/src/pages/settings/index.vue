@@ -161,7 +161,14 @@
         </a-form>
 
         <a-alert
-          v-if="aiBundle && !aiBundle.encryptionEnabled"
+          v-if="aiBundle && !aiBundle.vectorAvailable"
+          type="info"
+          show-icon
+          class="ai-alert"
+          message="语义搜索未启用：PostgreSQL 需安装 pgvector 扩展（见部署手册）；其余 AI 功能不受影响"
+        />
+        <a-alert
+          v-else-if="aiBundle && !aiBundle.encryptionEnabled"
           type="warning"
           show-icon
           class="ai-alert"
@@ -301,6 +308,7 @@ interface AiBundle {
   settings: AiSettingsView;
   providers: AiProviderEntry[];
   encryptionEnabled: boolean;
+  vectorAvailable: boolean;
 }
 
 interface SettingsResponse {

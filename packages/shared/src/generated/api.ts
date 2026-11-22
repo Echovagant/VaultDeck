@@ -1309,6 +1309,8 @@ export interface components {
             settings: components["schemas"]["AiSettingsView"];
             providers: components["schemas"]["AiProviderEntry"][];
             encryptionEnabled: boolean;
+            /** @description 语义搜索存储是否可用（PG 需 pgvector 扩展） */
+            vectorAvailable: boolean;
         };
         AiSettingsPatch: {
             providerId?: string | null;
