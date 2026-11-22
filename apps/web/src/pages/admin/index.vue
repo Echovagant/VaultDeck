@@ -136,21 +136,35 @@
       v-model:open="extDetailVisible"
       :title="activeExtension?.name ?? '扩展详情'"
       :footer="null"
+      width="680px"
       :destroy-on-close="true"
     >
       <template v-if="activeExtension">
-        <p class="ext-desc">{{ activeExtension.desc }}</p>
-        <a-tag :color="activeExtension.tagColor">{{ activeExtension.tagText }}</a-tag>
-        <p v-if="activeExtension.meta" class="ext-meta">{{ activeExtension.meta }}</p>
+        <p class="ext-intro">{{ activeExtension.intro }}</p>
 
-        <template v-if="activeExtension.name.startsWith('pgvector')">
-          <a-alert
-            v-if="extActionDetail"
-            :type="extActionOk ? 'success' : 'error'"
-            show-icon
-            :message="extActionDetail"
-            style="margin: 12px 0"
-          />
+        <div class="ext-compare">
+          <div class="ext-compare-col ext-compare-with">
+            <p class="ext-compare-title">装了它</p>
+            <p class="ext-compare-body">{{ activeExtension.withIt }}</p>
+          </div>
+          <div class="ext-compare-col">
+            <p class="ext-compare-title">没装它</p>
+            <p class="ext-compare-body">{{ activeExtension.withoutIt }}</p>
+          </div>
+        </div>
+
+        <p v-if="activeExtension.meta" class="ext-meta">{{ activeExtension.meta }}</p>
+        <a-tag :color="activeExtension.tagColor">{{ activeExtension.tagText }}</a-tag>
+
+        <a-alert
+          v-if="extActionDetail"
+          :type="extActionOk ? 'success' : 'error'"
+          show-icon
+          :message="extActionDetail"
+          style="margin: 14px 0"
+        />
+
+        <template v-if="activeExtension.kind === 'pgvector'">
           <div class="ext-actions">
             <a-button
               v-if="!aiBundle?.vectorAvailable"
@@ -175,13 +189,13 @@
           </p>
         </template>
 
-        <template v-else-if="activeExtension.name.startsWith('MCP')">
+        <template v-else-if="activeExtension.kind === 'mcp'">
           <div class="ext-actions">
             <a-button type="primary" @click="mcpConfigVisible = true">查看接入配置</a-button>
           </div>
         </template>
 
-        <template v-else-if="activeExtension.name.startsWith('Agent Skill')">
+        <template v-else-if="activeExtension.kind === 'skill'">
           <div class="ext-actions">
             <a-button
               type="primary"
@@ -193,6 +207,36 @@
             </a-button>
           </div>
         </template>
+
+        <template v-else-if="activeExtension.kind === 'pptx'">
+          <div class="ext-actions">
+            <a-button
+              type="primary"
+              href="https://github.com/Echovagant/VaultDeck/blob/main/docs/ops/deployment.md"
+              target="_blank"
+              rel="noopener"
+            >
+              查看部署手册
+            </a-button>
+          </div>
+        </template>
+
+        <template v-else-if="activeExtension.kind === 'restic'">
+          <div class="ext-actions">
+            <a-button
+              type="primary"
+              href="https://github.com/Echovagant/VaultDeck/blob/main/docs/ops/deployment.md"
+              target="_blank"
+              rel="noopener"
+            >
+              查看备份文档
+            </a-button>
+          </div>
+        </template>
+
+        <p v-if="activeExtension.kind === 'builtin'" class="ext-steps">
+          这是离线包内置的基础组件，随一键安装自动部署，无需手动操作。
+        </p>
       </template>
     </a-modal>
 
@@ -417,9 +461,12 @@ interface ExtEntry {
   tagText: string;
   tagColor: string;
   desc: string;
+  intro: string;
+  withIt: string;
+  withoutIt: string;
+  kind: 'pgvector' | 'mcp' | 'skill' | 'builtin' | 'pptx' | 'restic';
   steps?: string;
   meta?: string;
-  guideUrl?: string;
 }
 
 const EXT_CATALOG: Array<Omit<ExtEntry, 'steps' | 'meta'>> = [
@@ -428,23 +475,94 @@ const EXT_CATALOG: Array<Omit<ExtEntry, 'steps' | 'meta'>> = [
     category: 'AI 能力',
     tagText: '已启用',
     tagColor: 'success',
-    desc: '语义搜索与语义索引的向量存储。未安装时语义功能禁用并提示，其余 AI 功能不受影响。',
+    desc: '给系统装上「按意思找文件」的能力。',
+    intro: '这是给数据库加装「按意思找文件」能力的插件。',
+    withIt:
+      '在搜索页点「语义搜索」，输入「关于设备验收要求的文件」——就算文件名里没有「验收」两个字，只要文件内容讲的是这件事，也能被找出来，并按相关程度排序。',
+    withoutIt:
+      '只能按文件名关键词、上传日期、大小、类型来找；文件内容讲什么，系统搜不到。AI 找文件、AI 总结、分享等其余功能不受影响。',
+    kind: 'pgvector',
   },
   {
     name: 'MCP Server',
     category: '接入',
     tagText: '内置',
     tagColor: 'success',
-    desc: '把资料库接入外部 AI 助手（Claude Desktop / Cherry Studio / Cursor 等）。零依赖单文件在离线包 current\\mcp\\ 目录，安装说明见同目录 MCP-INSTALL.md；仓库内源码在 apps/mcp-server/。',
-    guideUrl: 'https://github.com/Echovagant/VaultDeck/blob/main/apps/mcp-server/MCP-INSTALL.md',
+    desc: '把资料库接入外部 AI 助手的桥梁，本体已内置在离线包里。',
+    intro: '这是让外部 AI 助手（Claude Desktop / Cherry Studio / 千问等）能直接使用资料库的桥梁。',
+    withIt:
+      '在 AI 助手的对话框里说「帮我找上周验收的报告」，助手直接从资料库里找出来给你；还能总结、分类、下载、上传——不用打开网页。',
+    withoutIt:
+      'AI 助手与资料库互不相通，所有操作都要自己登录网页完成。本体已随离线包内置，「安装」只需在 AI 助手侧填一份配置。',
+    kind: 'mcp',
   },
   {
     name: 'Agent Skill 包',
     category: '接入',
     tagText: 'Releases 提供',
     tagColor: 'success',
-    desc: '面向千问等支持 Skill 的 AI 助手：下载 vaultdeck-skill-x.x.x.zip，按包内 SKILL.md 安装授权即可用自然语言找文件、总结、分类、上传下载。',
-    guideUrl: 'https://github.com/Echovagant/VaultDeck/releases',
+    desc: '与 MCP Server 作用相同，面向另一类支持 Skill 安装包的 AI 助手（如千问）。',
+    intro: '作用与 MCP Server 相同：让支持 Skill 安装包的 AI 助手（如千问）直接使用资料库。',
+    withIt:
+      '在千问里发一条安装指令，之后直接对话：「找一下合同里关于交付时间的条款」——助手自动检索并给出结果。',
+    withoutIt: '千问无法访问资料库，只能人工登录网页操作。',
+    kind: 'skill',
+  },
+  {
+    name: 'Nginx 接入层',
+    category: '基础组件',
+    tagText: '内置',
+    tagColor: 'success',
+    desc: '所有网页访问的加密入口（HTTPS），随一键安装自动部署。',
+    intro: '所有网页访问都经过它加密传输（HTTPS），是系统的门卫。',
+    withIt: '浏览器地址栏是 https 开头，账号口令与资料内容在传输中全程加密。',
+    withoutIt: '系统无法以加密方式对外提供访问；离线包默认含它，不存在「没有」的情况。',
+    kind: 'builtin',
+  },
+  {
+    name: 'WinSW 服务守护',
+    category: '基础组件',
+    tagText: '内置',
+    tagColor: 'success',
+    desc: '把 VaultDeck 注册成 Windows 系统服务，随一键安装自动部署。',
+    intro: '把 VaultDeck 注册成 Windows 系统服务：开机自启、崩溃自动拉起。',
+    withIt: '服务器断电重启后，系统自动恢复运行，不需要人到机房操作。',
+    withoutIt: '每次开机都要有人到服务器目录里手动启动。离线包默认含它。',
+    kind: 'builtin',
+  },
+  {
+    name: 'PostgreSQL 运行时',
+    category: '基础组件',
+    tagText: '内置',
+    tagColor: 'success',
+    desc: '存放全部资料记录的数据库，离线包自带精简运行时。',
+    intro: '存放所有资料记录与账号信息的数据库。',
+    withIt: '数据可靠落盘，异常断电后可恢复；配合 pgvector 还能开启语义搜索。',
+    withoutIt: '数据只在内存里，程序一重启就清空（开发模式）。离线包默认含它。',
+    kind: 'builtin',
+  },
+  {
+    name: 'restic 增量备份',
+    category: '备份与恢复',
+    tagText: '内置工具',
+    tagColor: 'success',
+    desc: '离线包自带的备份工具，把资料与数据库做加密增量备份到移动硬盘或 NAS。',
+    intro: '离线包自带的备份工具：一条命令把资料与数据库做加密增量备份。',
+    withIt: '每天一条命令，只备份新增部分，省空间省时间；备份口令自己掌握。',
+    withoutIt: '备份需要全量手工拷贝，或者改用你习惯的其他备份方式——系统不强制用它。',
+    kind: 'restic',
+  },
+  {
+    name: 'pptx 服务端转换',
+    category: '文档转换',
+    tagText: '可选安装',
+    tagColor: 'default',
+    desc: '让 PPT 文件也能在浏览器里预览（自动转成 PDF）。当前对接 LibreOffice，也可替换为其他转换服务。',
+    intro: '让 PPT 文件也能像 Word、Excel 一样在浏览器里直接预览。',
+    withIt: 'pptx 文件点「预览」直接看内容，不用下载。',
+    withoutIt:
+      'pptx 预览按钮不可用，需要下载后用本地 Office / WPS 打开；docx / xlsx / pdf 预览不受影响。',
+    kind: 'pptx',
   },
 ];
 
@@ -472,7 +590,7 @@ const visibleExtensions = computed<ExtEntry[]>(() => {
   });
 });
 
-const extFilterOptions = ['全部', 'AI 能力', '接入', '文档转换'];
+const extFilterOptions = ['全部', 'AI 能力', '接入', '基础组件', '备份与恢复', '文档转换'];
 const extDetailVisible = ref(false);
 const activeExtension = ref<ExtEntry | null>(null);
 const extActionLoading = ref(false);
