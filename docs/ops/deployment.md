@@ -152,9 +152,9 @@ AI 功能（找文件、总结、分类建议）使用 BYOK：模型密钥由使
 
 语义搜索的向量存储依赖 PostgreSQL 的 **pgvector** 扩展（开源项目，GitHub `pgvector/pgvector`，Windows 预编译 dll 需按 PG 大版本从其 Release 页下载）。未安装时语义搜索与语义索引整体禁用并在界面明确提示，其余 AI 功能不受影响。
 
-安装步骤（管理员 PowerShell，PG 服务为本机 `F:\PostgreSQL` 时示例）：
+安装步骤（管理员 PowerShell，`<PG_HOME>` 为本机 PostgreSQL 安装目录）：
 
-1. 从 pgvector GitHub Release 下载与 PG 大版本匹配的 Windows 包，解压后把其中的 `vector.dll`、`vector.control` 复制到 PG 的 `lib` 与 `share\extension` 目录（如 `F:\PostgreSQL\pgsql\lib`、`F:\PostgreSQL\pgsql\share\extension`）。
+1. 从 pgvector GitHub Release 下载与 PG 大版本匹配的 Windows 包，解压后把其中的 `vector.dll`、`vector.control` 复制到 PG 的 `lib` 与 `share\extension` 目录（如 `<PG_HOME>\lib`、`<PG_HOME>\share\extension`）。
 2. 重启数据库服务：`pg_ctl -D <数据目录> restart`。
 3. 在业务库执行：`CREATE EXTENSION IF NOT EXISTS vector;`
 4. 重启 vaultdeck-api 服务（或后台重新保存一次 AI 设置）。「设置 → AI 服务」页会显示语义搜索是否可用。
