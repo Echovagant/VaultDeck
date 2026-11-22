@@ -99,6 +99,63 @@
       </a-table>
     </div>
 
+    <div class="vd-panel">
+      <h2 class="panel-title">扩展</h2>
+      <p class="panel-note">
+        可选组件与其状态。安装或启停需要管理员权限，详细步骤见部署手册对应章节。
+      </p>
+      <div class="ext-grid">
+        <div class="ext-card">
+          <div class="ext-head">
+            <span class="ext-name">pgvector（语义搜索）</span>
+            <a-tag :color="aiBundle?.vectorAvailable ? 'success' : 'default'">
+              {{ aiBundle?.vectorAvailable ? '已启用' : '未安装' }}
+            </a-tag>
+          </div>
+          <p class="ext-desc">语义搜索与语义索引的向量存储。未安装时语义功能禁用并提示，其余 AI 功能不受影响。</p>
+          <p v-if="!aiBundle?.vectorAvailable" class="ext-steps">
+            安装：下载 pgvector Windows 包（GitHub pgvector/pgvector Release，按 PG 大版本选）→ 复制
+            vector.dll 与 vector.control 到 PG 的 lib 与 share\extension 目录 → 重启数据库 → 在业务库执行
+            CREATE EXTENSION IF NOT EXISTS vector → 重启本服务。完整步骤见部署手册 5.3。
+          </p>
+          <p v-else class="ext-meta">
+            已索引 {{ aiBundle?.vectorStats?.chunks ?? 0 }} 块 / {{ aiBundle?.vectorStats?.indexedFiles ?? 0 }} 个文件
+            <template v-if="aiBundle?.vectorStats?.model">（模型 {{ aiBundle.vectorStats.model }}）</template>
+          </p>
+        </div>
+        <div class="ext-card">
+          <div class="ext-head">
+            <span class="ext-name">MCP Server</span>
+            <a-tag color="success">内置</a-tag>
+          </div>
+          <p class="ext-desc">
+            把资料库接入外部 AI 助手（Claude Desktop / Cherry Studio / Cursor 等）。零依赖单文件在离线包
+            current\mcp\ 目录，安装说明见同目录 MCP-INSTALL.md；仓库内源码在 apps/mcp-server/。
+          </p>
+        </div>
+        <div class="ext-card">
+          <div class="ext-head">
+            <span class="ext-name">Agent Skill 包</span>
+            <a-tag color="success">Releases 提供</a-tag>
+          </div>
+          <p class="ext-desc">
+            面向千问等支持 Skill 的 AI 助手：从 Releases 页下载 vaultdeck-skill-x.x.x.zip，按包内
+            SKILL.md 安装授权即可用自然语言找文件、总结、分类、上传下载。
+          </p>
+        </div>
+        <div class="ext-card">
+          <div class="ext-head">
+            <span class="ext-name">LibreOffice（pptx 服务端转换）</span>
+            <a-tag color="default">未随包提供</a-tag>
+          </div>
+          <p class="ext-desc">
+            可选组件：安装后 pptx 可服务端转 PDF 预览。为控制离线包体积默认不含；docx / xlsx / pdf
+            预览不依赖它。
+          </p>
+        </div>
+      </div>
+    </div>
+
     <a-modal
       v-model:open="dialogVisible"
       title="新建账号"
@@ -210,6 +267,43 @@ import { computed, onMounted, reactive, ref } from 'vue';
 import { ApiError, api } from '@/api/client';
 import { useSessionStore } from '@/stores/session';
 
+interface VectorStatsInfo {
+  available: boolean;
+  indexedFiles: number;
+  chunks: number;
+  model: string | null;
+}
+
+interface AiSettingsView {
+  providerId: string | null;
+  baseUrl: string | null;
+  model: string | null;
+  effort: string | null;
+  embeddingModel: string | null;
+  hasApiKey: boolean;
+}
+
+interface AiProviderEntry {
+  id: string;
+  displayName: string;
+  baseUrl: string;
+  modelsSupported: boolean;
+  family: string;
+  effortLevels: string[] | null;
+  effortSupported: boolean;
+  customEndpoint: boolean;
+  note: string;
+  fallbackModels: string[];
+}
+
+interface AiBundle {
+  settings: AiSettingsView;
+  providers: AiProviderEntry[];
+  encryptionEnabled: boolean;
+  vectorAvailable: boolean;
+  vectorStats?: VectorStatsInfo;
+}
+
 interface UserItem {
   userId: string;
   username: string;
@@ -253,6 +347,7 @@ const resetPassword = ref('');
 const form = reactive({ username: '', displayName: '', role: 'MEMBER', password: '' });
 
 const grantsLoading = ref(false);
+const aiBundle = ref<AiBundle | null>(null);
 const grantSaving = ref(false);
 const grantDialogVisible = ref(false);
 const codeVisible = ref(false);
@@ -315,6 +410,14 @@ async function load(): Promise<void> {
     message.error(error instanceof ApiError ? error.message : '加载账号失败');
   } finally {
     loading.value = false;
+  }
+}
+
+async function loadAiBundle(): Promise<void> {
+  try {
+    aiBundle.value = await api<AiBundle>('/ai/settings');
+  } catch {
+    aiBundle.value = null;
   }
 }
 
@@ -512,6 +615,7 @@ function revokeGrant(item: AgentGrant): void {
 onMounted(() => {
   void load();
   void loadGrants();
+  void loadAiBundle();
 });
 </script>
 
@@ -571,5 +675,54 @@ onMounted(() => {
   font-family: var(--vd-font-mono);
   font-size: 13px;
   word-break: break-all;
+}
+.ext-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 12px;
+}
+
+.ext-card {
+  padding: 12px 14px;
+  border: 1px solid var(--vd-border);
+  border-radius: var(--vd-radius);
+  background: var(--vd-surface-sunken, transparent);
+}
+
+.ext-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.ext-name {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.ext-desc {
+  margin: 0 0 4px;
+  color: var(--vd-text-secondary);
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+.ext-steps {
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  border-left: 2px solid var(--vd-accent);
+  background: var(--vd-ochre-soft, rgba(0,0,0,0.03));
+  color: var(--vd-text-secondary);
+  font-size: 11px;
+  line-height: 1.8;
+}
+
+.ext-meta {
+  margin: 0;
+  color: var(--vd-text-secondary);
+  font-family: var(--vd-font-mono);
+  font-size: 11px;
 }
 </style>
