@@ -230,6 +230,7 @@
           :pagination="false"
           row-key="fileId"
           :row-selection="rowSelection"
+          :scroll="{ x: 700 }"
         >
           <template #bodyCell="{ column, record }">
             <template v-if="column.key === 'sizeBytes'">

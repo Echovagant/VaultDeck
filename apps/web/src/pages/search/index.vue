@@ -25,10 +25,12 @@
         placeholder="用一句话描述要找的文件，例如：上周上传的超过 100MB 的视频"
         enter-button="AI 解析"
         :loading="aiParsing"
-        style="max-width: 560px"
+        class="ai-bar-input"
         @search="parseWithAi"
       />
-      <a-button :loading="semanticLoading" @click="semanticSearch">语义搜索</a-button>
+      <a-button class="ai-bar-secondary" :loading="semanticLoading" @click="semanticSearch">
+        语义搜索
+      </a-button>
       <span class="ai-bar-hint">语义搜索按内容主题匹配，需领队先建立索引</span>
     </div>
 
@@ -84,6 +86,7 @@
       :loading="loading"
       :pagination="false"
       row-key="fileId"
+      :scroll="{ x: 620 }"
     >
       <template #bodyCell="{ column, record }">
         <template v-if="column.key === 'sizeBytes'">{{ formatBytes(record.sizeBytes) }}</template>
@@ -368,9 +371,21 @@ onMounted(() => {
 <style scoped>
 .ai-bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
+  gap: 10px 12px;
   margin-top: 10px;
+}
+
+.ai-bar-input {
+  flex: 1 1 260px;
+  min-width: 200px;
+}
+
+@media (max-width: 760px) {
+  .ai-bar-hint {
+    flex-basis: 100%;
+  }
 }
 
 .semantic-item {
